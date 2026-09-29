@@ -40,3 +40,8 @@ jobs:
           prerelease: false
           includeUpdaterJson: true
           args: --bundles nsis --config '{"bundle":{"createUpdaterArtifacts":true}}'
+      - name: Verify packaged Windows icons
+        shell: pwsh
+        run: |
+          $installer=Get-ChildItem target/release/bundle/nsis/*.exe | Select-Object -First 1
+          ./scripts/verify-icons.ps1 -SourceIcon src-tauri/icons/icon.ico -Targets @('target/release/easy-switch.exe',$installer.FullName) -OutputDirectory artifacts/icon-audit

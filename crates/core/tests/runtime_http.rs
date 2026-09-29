@@ -11,6 +11,84 @@ use serde_json::{Value, json};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+#[tokio::test]
+async fn model_discovery_bounds_streams_and_cancels_after_headers() {
+    use axum::routing::get;
+    use tokio_util::sync::CancellationToken;
+    let stalled = Arc::new(tokio::sync::Notify::new());
+    let signal = stalled.clone();
+    let app = Router::new()
+        .route(
+            "/ok/models",
+            get(|| async { Json(json!({"data":[{"id":"b"},{"id":"a"},{"id":"a"}]})) }),
+        )
+        .route(
+            "/failed/models",
+            get(|| async { StatusCode::SERVICE_UNAVAILABLE }),
+        )
+        .route(
+            "/large/models",
+            get(|| async {
+                Body::from_stream(futures_util::stream::iter(
+                    (0..80).map(|_| Ok::<_, std::io::Error>(vec![b' '; 65536])),
+                ))
+            }),
+        )
+        .route(
+            "/slow/models",
+            get(move || {
+                let signal = signal.clone();
+                async move {
+                    Body::from_stream(async_stream::stream! {
+                        yield Ok::<_,std::io::Error>("{\"data\":[");
+                        signal.notify_one();
+                        std::future::pending::<()>().await;
+                    })
+                }
+            }),
+        );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let server = tokio::spawn(axum::serve(listener, app).into_future());
+    let provider = |route: &str| Provider {
+        base_url: format!("http://{address}/{route}"),
+        protected_key: Some(crypto::protect("synthetic-only").unwrap()),
+        ..Default::default()
+    };
+    let ct = CancellationToken::new();
+    assert_eq!(
+        diagnostics::models(&provider("ok"), &ct).await.unwrap(),
+        vec!["a", "b"]
+    );
+    assert!(
+        diagnostics::models(&provider("failed"), &ct)
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("503")
+    );
+    assert!(
+        diagnostics::models(&provider("large"), &ct)
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("过大")
+    );
+    let slow = provider("slow");
+    let task_ct = ct.clone();
+    let task = tokio::spawn(async move { diagnostics::models(&slow, &task_ct).await });
+    tokio::time::timeout(Duration::from_secs(2), stalled.notified())
+        .await
+        .unwrap();
+    ct.cancel();
+    let result = tokio::time::timeout(Duration::from_secs(1), task)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(result.unwrap_err().to_string().contains("取消"));
+    server.abort();
+}
+
 #[derive(Clone, Default)]
 struct Upstream {
     calls: Arc<Mutex<Vec<Value>>>,

@@ -6,6 +6,7 @@ use easy_switch_core::{
 };
 use serde_json::{Value, json};
 use std::{
+    collections::HashSet,
     path::PathBuf,
     sync::{
         Arc, Mutex,
@@ -171,13 +172,17 @@ pub async fn scan_sessions(state: State<'_, AppState>) -> Reply<core::sessions::
     .map_err(|e| e.to_string())?
     .map_err(err)
 }
-fn selected(store: &Store, ids: &[String]) -> Result<Vec<core::sessions::Session>> {
-    let result =
-        core::sessions::Scanner::default().scan(&store.settings()?, &CancellationToken::new())?;
+fn selected(
+    store: &Store,
+    scanner: &mut core::sessions::Scanner,
+    ids: &[String],
+) -> Result<Vec<core::sessions::Session>> {
+    let result = scanner.scan(&store.settings()?, &CancellationToken::new())?;
+    let wanted: HashSet<_> = ids.iter().collect();
     let selected: Vec<_> = result
         .sessions
         .into_iter()
-        .filter(|s| ids.contains(&s.id))
+        .filter(|s| wanted.contains(&s.id))
         .collect();
     ensure!(selected.len() == ids.len(), "会话已消失或选择重复，请刷新");
     Ok(selected)
@@ -188,8 +193,9 @@ pub async fn session_detail(
     id: String,
 ) -> Reply<core::sessions::Detail> {
     let store = state.store.clone();
+    let scanner = state.scanner.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let rows = selected(&store, &[id])?;
+        let rows = selected(&store, &mut scanner.lock().unwrap(), &[id])?;
         core::sessions::detail(&rows[0], 500)
     })
     .await
@@ -233,10 +239,11 @@ pub async fn export_sessions(
 ) -> Reply<Value> {
     let (guard, ct) = state.begin().map_err(err)?;
     let store = state.store.clone();
+    let scanner = state.scanner.clone();
     tauri::async_runtime::spawn_blocking(move || -> Result<_> {
         let _guard = guard;
         core::sessions::normalize(&folder)?;
-        let rows = selected(&store, &ids)?;
+        let rows = selected(&store, &mut scanner.lock().unwrap(), &ids)?;
         let mut results = vec![];
         for s in rows {
             if ct.is_cancelled() {
@@ -277,13 +284,9 @@ pub async fn fetch_models(
     key: Option<String>,
 ) -> Reply<Vec<String>> {
     let (_guard, ct) = state.begin().map_err(err)?;
-    if let Some(old) = state
-        .store
-        .providers()
-        .map_err(err)?
-        .iter()
-        .find(|p| p.id == provider.id)
-    {
+    let all = state.store.providers().map_err(err)?;
+    let old = all.iter().find(|p| p.id == provider.id);
+    if let Some(old) = old {
         for (name, value) in &mut provider.headers {
             if value.is_empty() {
                 if let Some(v) = old.headers.get(name) {
@@ -295,13 +298,7 @@ pub async fn fetch_models(
     provider.protected_key = if let Some(k) = key.filter(|s| !s.is_empty()) {
         Some(core::crypto::protect(&k).map_err(err)?)
     } else {
-        state
-            .store
-            .providers()
-            .map_err(err)?
-            .into_iter()
-            .find(|p| p.id == provider.id)
-            .and_then(|p| p.protected_key)
+        old.and_then(|p| p.protected_key.clone())
     };
     core::diagnostics::models(&provider, &ct).await.map_err(err)
 }
@@ -371,15 +368,12 @@ pub async fn restore_operation(
         }
         core::journal::restore(&root, &id, &allowed)?;
         store.synchronize_active()?;
-        if store.providers()?.iter().any(|p| {
-            Some(&p.id)
-                == store
-                    .settings()
-                    .ok()
-                    .and_then(|s| s.active_provider_id)
-                    .as_ref()
-                && p.runtime()
-        }) {
+        let active = store.settings()?.active_provider_id;
+        if store
+            .providers()?
+            .iter()
+            .any(|p| Some(&p.id) == active.as_ref() && p.runtime())
+        {
             core::runtime::ensure_started_blocking(&store)?;
         }
         host.start()

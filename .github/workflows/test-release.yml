@@ -31,6 +31,11 @@ jobs:
           @{version=$env:TEST_VERSION} | ConvertTo-Json | Set-Content test-version.json
           npm run tauri -- build --features test-channel --config src-tauri/tauri.test.conf.json --config test-version.json --bundles nsis
           if ($LASTEXITCODE -ne 0) { throw 'Build failed.' }
+      - name: Verify packaged Windows icons
+        shell: pwsh
+        run: |
+          $installer=Get-ChildItem target/release/bundle/nsis/*.exe | Select-Object -First 1
+          ./scripts/verify-icons.ps1 -SourceIcon src-tauri/icons/icon.ico -Targets @('target/release/easy-switch.exe',$installer.FullName) -OutputDirectory artifacts/icon-audit
       - name: Publish prerelease test channel
         shell: pwsh
         env:

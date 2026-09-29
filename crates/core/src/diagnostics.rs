@@ -10,6 +10,18 @@ fn row(name: &str, state: &str, detail: impl Into<String>) -> Diagnostic {
         detail: detail.into(),
     }
 }
+async fn body(mut response: reqwest::Response, ct: &CancellationToken) -> Result<Vec<u8>> {
+    let mut data = Vec::new();
+    loop {
+        let chunk = tokio::select! {
+            _ = ct.cancelled() => anyhow::bail!("操作已取消"),
+            chunk = response.chunk() => chunk?,
+        };
+        let Some(chunk) = chunk else { return Ok(data) };
+        ensure!(data.len() + chunk.len() <= 4_000_000, "诊断响应过大");
+        data.extend_from_slice(&chunk);
+    }
+}
 pub async fn models(p: &Provider, ct: &CancellationToken) -> Result<Vec<String>> {
     validate_url(&p.base_url)?;
     let key = crypto::unprotect(p.protected_key.as_deref().context("API Key 未配置")?)?;
@@ -26,8 +38,7 @@ pub async fn models(p: &Provider, ct: &CancellationToken) -> Result<Vec<String>>
         "模型列表 HTTP {}",
         response.status().as_u16()
     );
-    let body = response.bytes().await?;
-    ensure!(body.len() <= 4_000_000, "模型列表过大");
+    let body = body(response, ct).await?;
     let v: Value = serde_json::from_slice(&body)?;
     let mut names = v["data"]
         .as_array()
@@ -145,7 +156,7 @@ pub async fn doctor(
             "responses"
         };
         let start = Instant::now();
-        let result = tokio::select! {_=ct.cancelled()=>Err(anyhow::anyhow!("已取消")),r=async{let response=runtime::request(&client,p,endpoint)?.timeout(Duration::from_secs(45)).json(&payload).send().await?;ensure!(response.status().is_success(),"HTTP {}",response.status().as_u16());let data=response.bytes().await?;ensure!(data.len()<4_000_000,"诊断响应过大");if stream{let text=std::str::from_utf8(&data)?;ensure!(text.contains("data:")&&(text.contains("response.completed")||text.contains("[DONE]")),"未收到完整 SSE 结束事件");}else{let v:Value=serde_json::from_slice(&data)?;if tool{let calls=if p.protocol==Protocol::ChatCompletions{v.pointer("/choices/0/message/tool_calls")}else{v.get("output")};let matched=calls.and_then(Value::as_array).is_some_and(|items|items.iter().any(|x|x["name"]=="easy_switch_probe"||x["function"]["name"]=="easy_switch_probe"));ensure!(matched,"未返回预期诊断工具调用");}else if compact{ensure!(v["output"].is_array(),"不是有效压缩结果");}else{ensure!(v["output"].is_array()||v["choices"].is_array(),"不是有效文本结果");}}Ok::<_,anyhow::Error>(())}=>r};
+        let result = tokio::select! {_=ct.cancelled()=>Err(anyhow::anyhow!("已取消")),r=async{let response=runtime::request(&client,p,endpoint)?.timeout(Duration::from_secs(45)).json(&payload).send().await?;ensure!(response.status().is_success(),"HTTP {}",response.status().as_u16());let data=body(response,ct).await?;if stream{let text=std::str::from_utf8(&data)?;ensure!(text.contains("data:")&&(text.contains("response.completed")||text.contains("[DONE]")),"未收到完整 SSE 结束事件");}else{let v:Value=serde_json::from_slice(&data)?;if tool{let calls=if p.protocol==Protocol::ChatCompletions{v.pointer("/choices/0/message/tool_calls")}else{v.get("output")};let matched=calls.and_then(Value::as_array).is_some_and(|items|items.iter().any(|x|x["name"]=="easy_switch_probe"||x["function"]["name"]=="easy_switch_probe"));ensure!(matched,"未返回预期诊断工具调用");}else if compact{ensure!(v["output"].is_array(),"不是有效压缩结果");}else{ensure!(v["output"].is_array()||v["choices"].is_array(),"不是有效文本结果");}}Ok::<_,anyhow::Error>(())}=>r};
         match result {
             Ok(()) => rows.push(row(
                 name,

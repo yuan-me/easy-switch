@@ -14,4 +14,7 @@ $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD=[Text.Encoding]::UTF8.GetString([Securit
 try {
     npm.cmd run tauri -- build --bundles nsis
     if($LASTEXITCODE -ne 0){throw 'Signed installer build failed'}
+    $installer=Get-ChildItem target/release/bundle/nsis/*_x64-setup.exe | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    & (Join-Path $PSScriptRoot 'verify-icons.ps1') -SourceIcon src-tauri/icons/icon.ico -Targets @('target/release/easy-switch.exe',$installer.FullName) -OutputDirectory artifacts/icon-audit
+    if($LASTEXITCODE -ne 0){throw 'Packaged icon verification failed'}
 }finally{$env:TAURI_SIGNING_PRIVATE_KEY=$null;$env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD=$null}

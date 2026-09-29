@@ -154,6 +154,23 @@ fn ten_thousand_indexed_sessions_scan_without_reading_bodies() {
 }
 
 #[test]
+fn reused_scanner_refreshes_changed_files_and_drops_removed_files() {
+    let f = fixture();
+    let ct = CancellationToken::new();
+    let mut scanner = Scanner::default();
+    assert_eq!(scanner.scan(&f.settings, &ct).unwrap().sessions.len(), 1);
+    let mut contents = fs::read_to_string(&f.file).unwrap();
+    contents.push_str("{\"type\":\"event_msg\",\"payload\":{\"type\":\"user_message\",\"message\":\"updated title\"}}\n");
+    fs::write(&f.file, contents).unwrap();
+    assert_eq!(
+        scanner.scan(&f.settings, &ct).unwrap().sessions[0].title,
+        "updated title"
+    );
+    fs::remove_file(&f.file).unwrap();
+    assert!(scanner.scan(&f.settings, &ct).unwrap().sessions.is_empty());
+}
+
+#[test]
 fn restore_rejects_unmerged_wal_before_writing_other_files() {
     let f = fixture();
     let path = db(&f);

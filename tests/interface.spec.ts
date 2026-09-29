@@ -1,4 +1,26 @@
 import {test,expect} from '@playwright/test';
+test('overlapping session refreshes share a request and release it afterwards',async({page})=>{
+ await page.addInitScript(()=>{
+  let calls=0,resolveScan:(v:unknown)=>void=()=>{};
+  Object.assign(window,{isTauri:true,__TAURI_EVENT_PLUGIN_INTERNALS__:{unregisterListener:()=>{}},scanCalls:()=>calls,finishScan:()=>resolveScan({sessions:[],warnings:[]}),__TAURI_INTERNALS__:{
+   transformCallback:()=>1,
+   invoke:async(command:string)=>{
+    if(command==='bootstrap')return {providers:[],settings:{theme:'light',scrollPositions:{}},version:'test',migrationError:null};
+    if(command==='scan_sessions'){calls++;return new Promise(resolve=>{resolveScan=resolve})}
+    return 1;
+   }
+  }});
+ });
+ await page.goto('/');await page.getByRole('button',{name:'会话',exact:true}).click();
+ const calls=()=>page.evaluate(()=>(window as unknown as {scanCalls:()=>number}).scanCalls());
+ await expect.poll(calls).toBe(1);
+ await page.getByRole('button',{name:'刷新',exact:true}).click();
+ await page.evaluate(()=>(window as unknown as {finishScan:()=>void}).finishScan());
+ await expect(page.getByRole('button',{name:'刷新',exact:true})).toBeEnabled();expect(await calls()).toBe(1);
+ await page.getByRole('button',{name:'刷新',exact:true}).click();await expect.poll(calls).toBe(2);
+ await page.evaluate(()=>(window as unknown as {finishScan:()=>void}).finishScan());
+ await expect(page.getByRole('button',{name:'刷新',exact:true})).toBeEnabled();
+});
 test('provider navigation, search, themes, editor and minimum viewport',async({page})=>{
  const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));await page.goto('/');await expect(page.getByRole('heading',{name:'供应商',exact:true})).toBeVisible();await expect(page.locator('.provider-card')).toHaveCount(4);
  await page.getByLabel('浅色',{exact:true}).click();await page.screenshot({animations:'disabled',path:'artifacts/screenshots/providers-light.png',fullPage:true});
