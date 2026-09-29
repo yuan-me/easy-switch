@@ -2,7 +2,7 @@
 
 Windows x64 的 Codex 供应商与会话管理工具，使用 Tauri 2、Rust、React/TypeScript。
 
-**当前为测试候选版，尚未发布正式版本。** 已验证 Sub2API 实际作图、Windows 覆盖安装及官方/API 往返切换；完整发布验收和 GitHub 自动升级实测仍在进行。最新边界见 [验证记录](docs/VALIDATION.md)。
+**[下载 Easy Switch v1.0.2（Windows x64）](https://github.com/yuan-me/easy-switch/releases/tag/v1.0.2)**。已验证 Sub2API 实际作图、官方/API 往返切换、Windows 覆盖安装和 GitHub 真实自动升级。完整迁移计划仍有未覆盖项目，见 [验证记录](docs/VALIDATION.md)。
 
 ## 功能
 
