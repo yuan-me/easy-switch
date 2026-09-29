@@ -11,7 +11,7 @@
 
 ## 正式发布
 
-同步 `package.json`、Cargo 两个 package、Tauri 配置与锁文件版本；更新 CHANGELOG。推送 `vX.Y.Z` 标签触发 Release，它构建 Windows x64 NSIS、更新包签名和 `latest.json`，先创建 **draft**。确认 VM 安装与功能结果后，再发布 draft。
+同步 `package.json`、应用 Cargo package、Tauri 配置与锁文件版本；更新 CHANGELOG。手动触发 Release 工作流，它构建 Windows x64 NSIS、更新包签名和 `latest.json`，先创建 **draft**。确认 VM 安装与功能结果后，再发布 draft。发布只保留此入口，避免公布草稿时创建版本标签而再次构建同一版本；已公开的版本不要重复构建或替换安装包。
 
 正式应用读取：
 
