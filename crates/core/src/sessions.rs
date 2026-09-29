@@ -588,6 +588,23 @@ pub fn stage_changes(
             &expanded.iter().map(|s| s.path.clone()).collect::<Vec<_>>(),
         )?;
     }
+    let offsets = if matches!(action, "provider" | "migrate") {
+        let shifts = crate::history::stage_metadata(
+            j,
+            settings,
+            &expanded,
+            if action == "provider" {
+                "model_provider"
+            } else {
+                "cwd"
+            },
+            value.context("缺少修改值")?,
+            ct,
+        )?;
+        crate::history::active_shifts(settings, &shifts)?
+    } else {
+        HashMap::new()
+    };
     for item in &expanded {
         cancellation(ct)?;
         let path = owned(&item.path, settings)?;
@@ -598,6 +615,9 @@ pub fn stage_changes(
         );
         match action {
             "provider" | "migrate" => {
+                if crate::history::header(&path)?.paginated {
+                    continue;
+                }
                 let temp = j.dir.join(format!("{}.jsonl", uuid::Uuid::new_v4()));
                 let result = (|| {
                     patch_metadata(
@@ -664,15 +684,19 @@ pub fn stage_changes(
         let c = open(&database)?;
         let thread_cols = columns(&c, "threads")?;
         let cat_cols = columns(&c, "local_thread_catalog")?;
+        let has_offsets: bool = !offsets.is_empty() && c.query_row("SELECT EXISTS(SELECT 1 FROM sqlite_master m JOIN pragma_table_info(m.name) p WHERE m.type='table' AND p.name GLOB '*byte_offset')",[],|r|r.get(0))?;
         drop(c);
         let selected: Vec<_> = items
             .iter()
             .filter(|s| s.database.as_ref() == Some(&database))
             .collect();
-        if selected.is_empty() && cat_cols.is_empty() {
+        if selected.is_empty() && cat_cols.is_empty() && !has_offsets {
             continue;
         }
         stage_database(j, &database, |db| {
+            if has_offsets {
+                crate::history::rebase_database(db, &offsets)?;
+            }
             if !selected.is_empty() {
                 required(
                     &thread_cols,
