@@ -4,11 +4,13 @@
 
 Windows x64 的 Codex 供应商与会话管理工具，使用 Tauri 2、Rust、React/TypeScript。
 
-**[下载 v1.0.2 安装包](https://github.com/yuan-me/easy-switch/releases/download/v1.0.2/Easy.Switch_1.0.2_x64-setup.exe)** · [最新正式版](https://github.com/yuan-me/easy-switch/releases/latest) · [更新记录](CHANGELOG.md)
+**[下载 v1.0.3 安装包](https://github.com/yuan-me/easy-switch/releases/download/v1.0.3/Easy.Switch_1.0.3_x64-setup.exe)** · [最新正式版](https://github.com/yuan-me/easy-switch/releases/latest) · [更新记录](CHANGELOG.md)
+
+v1.0.3 修复多份数据库指向同一会话时误报“重复线程索引”，同步处理相关索引并保留真实冲突保护，无需手动删除数据库。
 
 ## 安装与使用
 
-1. 下载并运行 `Easy.Switch_1.0.2_x64-setup.exe`，安装到当前 Windows 用户。缺少 WebView2 时，安装器会联网下载其引导程序。
+1. 下载并运行 `Easy.Switch_1.0.3_x64-setup.exe`，安装到当前 Windows 用户。缺少 WebView2 时，安装器会联网下载其引导程序。
 2. 打开 Easy Switch，在“设置”中确认 Codex 数据目录和桌面程序路径。
 3. 在“供应商”中添加配置并切换。使用 Sub2API 图片能力时，选择 Responses 协议并开启“Sub2API 图片工具兼容”，完整重启 Codex 后在新会话验证。
 
@@ -33,7 +35,7 @@ Windows x64 的 Codex 供应商与会话管理工具，使用 Tauri 2、Rust、R
 
 - Windows 11 虚拟机：Sub2API 新会话实际出图、官方/API 往返切换、分页历史元数据扩容及覆盖安装。
 - GitHub 真实更新：测试版 `test.1 → test.2` 自动下载、签名校验、确认安装、自动重启及旧包重装；配置、DPAPI 凭证、会话和阅读位置保留。正式版更新地址也已验证。
-- 自动化验证：89 项 Rust 测试、3 组界面测试和 9 项原生烟测；发布包与安装后的六尺寸图标检查通过。
+- v1.0.3：98 项 Rust 测试、3 组界面测试和 9 项隔离原生烟测通过；合成多数据库复现、回滚、分页偏移、签名和发布包图标检查通过。本轮未在报告问题的另一台电脑上复验，也未重新执行 VM 安装。
 
 实际官方账号请求、混入模式、历史会话继续发送、完整批量故障场景，以及 Windows 系统 DPI 和长期资源验收仍未全部覆盖。详见 [验证记录](docs/VALIDATION.md)，不将构建成功视为全部功能验收完成。
 
