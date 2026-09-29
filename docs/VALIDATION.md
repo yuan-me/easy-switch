@@ -1,6 +1,6 @@
 # 验证记录
 
-日期：2026-09-29。当前结论：**v1.0.4 分页文件身份修复通过合成回归，正在验证发布产物。v1.0.2 发布阶段已通过真实自动升级及旧包重装；本轮未重新执行 VM 安装。完整迁移计划仍有未覆盖项目，不能等同于全部功能验收完成。**
+日期：2026-09-29。当前结论：**v1.0.4 已发布，分页文件身份修复通过合成回归、隔离原生验收及发布产物校验。v1.0.2 发布阶段已通过真实自动升级及旧包重装；本轮未重新执行 VM 安装。完整迁移计划仍有未覆盖项目，不能等同于全部功能验收完成。**
 
 ## 已取得的证据
 
@@ -46,6 +46,9 @@ React 保持列表组件与行 key，用定时扫描更新数据，因此旧 WPF
 - 修正合成数据后，旧实现的 `growth_rebases_revisions_children_and_sqlite_then_restores_exact_bytes` 稳定复现“分页历史偏移未对齐事件边界”；修复后通过。验证三份历史文件、两份镜像分页数据库、后代引用、正文与序号保留、零/空偏移、完整恢复及部分提交回滚。
 - 增加仅存在回退后文件索引时的 API → 官方 → API 回归，验证每轮索引指向实际文件。真实无效偏移与未知结构继续阻止提交，不清空数据库、不跳过校验；异常包含表、列、文件 ID 与偏移，不包含正文。
 - 本地 99 项 Rust 测试及 3 组 Playwright 通过。测试均使用合成数据，没有取得报告问题电脑的数据；本轮未重新执行 VM 安装或真实账号切换。
+- v1.0.4 签名 release EXE 的 9 项隔离原生烟测通过；主程序与本地安装器的六尺寸图标、签名、版本绑定及篡改拒绝通过。本地证据为 `artifacts/native-result.json`、`artifacts/screenshots/native-session.png`、`artifacts/icon-audit/report.json`。
+- 发布源码为 `27fff3e`。[Check](https://github.com/yuan-me/easy-switch/actions/runs/36531296810) 与 [Release](https://github.com/yuan-me/easy-switch/actions/runs/36531316335) 均成功；云端安装包签名、版本绑定、篡改拒绝及六尺寸图标通过。公开 `latest.json` 返回 200 与版本 1.0.4，无需登录的实际下载摘要与验证产物一致。
+- 正式安装包 SHA-256：`17b244767aa7025af9d50dedde355fff0b607890b7d9ea33a9328a0f20b9b0dd`。云端安装器图标证据：`artifacts/release-1.0.4-icon-audit/report.json`。
 
 ## 1.0.3 重复线程索引修复
 
