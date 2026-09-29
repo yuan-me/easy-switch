@@ -272,7 +272,7 @@ impl DesktopHost for Desktop {
                 .collect();
             #[cfg(windows)]
             if native::find(&ids) != 0 {
-                return Ok("Codex 窗口已就绪；工具能力需在新会话验证".into());
+                return Ok("Codex 已启动".into());
             }
             std::thread::sleep(Duration::from_millis(100));
         }

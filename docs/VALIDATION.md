@@ -64,3 +64,9 @@ React 保持列表组件与行 key，用定时扫描更新数据，因此旧 WPF
 - 三轮真实切换每轮检查 12 个 JSONL 正文和线程身份、39 个数据库偏移值、11 个会话预览。第一轮准确扩容 8 字节，后两轮复用行尾填充；三次日志均为 Complete，Codex 窗口重新就绪。
 - 本地 Rust 89 项、Playwright 3 组、原生烟测 9 项通过；签名、签名版本与篡改拒绝检查通过。`npm test` 修正为运行现有 Playwright 用例。
 - 私有证据：父工作区 `artifacts/vm-test/install-1.0.1.json`、`pagination-fixed-api-1.json`、`pagination-fixed-official.json`、`pagination-fixed-api-2.json`。本次未重新请求生成图片，也未验证在 Codex 中继续发送历史消息；不将预览通过等同于这两项验收。
+
+## 1.0.2 界面文案清理
+
+- 删除供应商页底部说明、官方/混入编辑说明、图片兼容帮助、空状态引导、Token 附注及设置页更新说明。保存通知简化为“配置已保存”，Codex 启动返回不再附加工具验收说明，切换成功显示“切换成功”；保留错误、状态、凭证编辑规则及操作确认。
+- 四个页面、编辑抽屉、筛选后的空状态与页面往返实检通过；无页面异常或框架错误浮层。3 组 Playwright 回归、9 项隔离原生烟测和 1.0.2 安装包签名/篡改拒绝检查通过，六尺寸图标资源一致。
+- Vite 开发监听排除 Rust target、artifacts、.local，避免编译中的 EXE 文件锁导致预览退出。界面验证使用现有 Playwright 工程：会话没有单独的 Browser skill；用于 GitHub 的浏览器连接也发生了连接失败。
