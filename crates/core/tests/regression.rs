@@ -399,7 +399,8 @@ fn duplicate_indexes_partial_commit_rolls_back_every_file() {
         &CancellationToken::new(),
     )
     .unwrap();
-    assert!(j.commit_with_fault(Some(2)).is_err());
+    assert_eq!(j.manifest.files.len(), 3);
+    assert!(j.commit_with_fault(Some(1)).is_err());
     assert_eq!(j.manifest.state, "Restored");
     for (path, bytes) in paths.iter().zip(before) {
         assert_eq!(fs::read(path).unwrap(), bytes);
