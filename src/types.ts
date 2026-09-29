@@ -1,0 +1,13 @@
+export type Mode='Official'|'Mixed'|'Api'|'Aggregate';
+export type Provider={id:string;name:string;mode:Mode;protocol:'Responses'|'ChatCompletions';baseUrl:string;model:string;contextWindow:number|null;compactLimit:number|null;strategy:'Failover'|'Session'|'RoundRobin'|'Weighted';members:{providerId:string;weight:number;enabled:boolean}[];imageCompatibility:boolean;headers:Record<string,string>;hasKey?:boolean};
+export type Settings={codexHome:string;sqliteHome:string|null;desktopExecutable:string;desktopAppId:string|null;activeProviderId:string|null;runtimePort:number;scrollPositions:Record<string,number>;enablePageRecovery:boolean;theme:'system'|'light'|'dark';automaticUpdates:boolean;automaticDownload:boolean};
+export type Bootstrap={providers:Provider[];settings:Settings;version:string;migrationError:string|null;busy:boolean};
+export type Session={id:string;title:string;cwd:string;provider:string;path:string;updated:number;archived:boolean;database:string|null};
+export type TokenPoint={time:string;cumulative:boolean;input:number|null;output:number|null;cached:number|null;reasoning:number|null;total:number|null};
+export type Detail={messages:{role:string;text:string;time:string}[];tokens:TokenPoint[];truncated:boolean;hasEncryptedContent:boolean;relations:{parent:string;child:string}[]};
+export type Diagnostic={name:string;state:'passed'|'failed'|'warning'|'untested';detail:string};
+export type Operation={id:string;description:string;state:string;fileCount:number;legacy:boolean};
+export type UpdateStatus={state:'idle'|'checking'|'current'|'available'|'downloading'|'ready'|'error';version?:string;notes?:string;downloaded?:number;total?:number;message?:string};
+export const modes:Record<Mode,string>={Official:'官方登录',Mixed:'混入 API',Api:'纯 API',Aggregate:'聚合路由'};
+export const strategies={Failover:'故障转移',Session:'按会话分配',RoundRobin:'按请求轮转',Weighted:'按权重分配'};
+export const blankProvider=():Provider=>({id:'p_'+crypto.randomUUID().replaceAll('-','').slice(0,12),name:'',mode:'Api',protocol:'Responses',baseUrl:'',model:'',contextWindow:null,compactLimit:null,strategy:'Failover',members:[],imageCompatibility:false,headers:{}});

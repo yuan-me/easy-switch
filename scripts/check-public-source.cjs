@@ -1,0 +1,5 @@
+// Audit only paths selected for publication; never read ignored user data or local keys.
+const {execFileSync}=require('node:child_process');const fs=require('node:fs');const path=require('node:path');const root=process.cwd().replaceAll('\\','/');
+const files=execFileSync('git',['-c','safe.directory='+root,'ls-files','-z'],{encoding:'utf8'}).split('\0').filter(Boolean);const failures=[];
+for(const f of files){if(/(^|\/)(\.local|artifacts|node_modules|target|\.env)(\/|$)/.test(f)||/\.(key|pem|dpapi|jsonl|sqlite|db)$/.test(f)){failures.push(f+': private/runtime path');continue;}if(/\.(png|ico|icns)$/.test(f))continue;const data=fs.readFileSync(path.join(root,f),'utf8');if(/sk-(?:proj-)?[A-Za-z0-9_-]{24,}/.test(data)||/-----BEGIN (?:RSA |OPENSSH )?PRIVATE KEY-----/.test(data)){failures.push(f+': credential-like content');}}
+if(failures.length){console.error(failures.join('\n'));process.exit(1)}console.log(`Publication audit passed: ${files.length} source paths; no private/runtime path or credential-pattern match.`);

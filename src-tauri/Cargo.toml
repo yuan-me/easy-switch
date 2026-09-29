@@ -1,0 +1,30 @@
+[package]
+name = "easy-switch"
+version = "1.0.0"
+edition = "2024"
+default-run = "easy-switch"
+
+[features]
+custom-protocol = ["tauri/custom-protocol"]
+test-channel = []
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+easy-switch-core = { path = "../crates/core" }
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+tauri-plugin-updater = "2"
+tauri-plugin-window-state = "2"
+tauri-plugin-single-instance = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+tokio-util = "0.7"
+anyhow = "1"
+
+[dev-dependencies]
+tauri = { version = "2", features = ["test"] }
+axum = "0.8"
+tempfile = "3"

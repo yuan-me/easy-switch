@@ -1,0 +1,6 @@
+{
+  "productName": "Easy Switch Test",
+  "identifier": "me.yuan.easy-switch.test",
+  "app": {"windows": [{"label":"main","title":"Easy Switch · 测试通道","width":1120,"height":780,"minWidth":940,"minHeight":620,"center":true}]},
+  "plugins": {"updater": {"endpoints":["https://github.com/yuan-me/easy-switch/releases/download/test-channel/latest-test.json"]}}
+}

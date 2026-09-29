@@ -1,0 +1,47 @@
+name: Test channel
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Test semver, e.g. 0.9.0-test.1
+        required: true
+permissions:
+  contents: write
+jobs:
+  test-package:
+    runs-on: windows-latest
+    environment: release
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 22, cache: npm}
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: npm ci
+      - run: cargo test --workspace --locked
+      - name: Build isolated test installer
+        shell: pwsh
+        env:
+          TEST_VERSION: ${{ inputs.version }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          if ($env:TEST_VERSION -notmatch '^\d+\.\d+\.\d+-test\.\d+$') { throw 'Use a test prerelease version.' }
+          if (-not $env:TAURI_SIGNING_PRIVATE_KEY) { throw 'Missing signing secret.' }
+          @{version=$env:TEST_VERSION} | ConvertTo-Json | Set-Content test-version.json
+          npm run tauri -- build --features test-channel --config src-tauri/tauri.test.conf.json --config test-version.json --bundles nsis
+          if ($LASTEXITCODE -ne 0) { throw 'Build failed.' }
+      - name: Publish prerelease test channel
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TEST_VERSION: ${{ inputs.version }}
+        run: |
+          $exe=Get-ChildItem target/release/bundle/nsis/*.exe | Select-Object -First 1
+          $sig=[IO.File]::ReadAllText($exe.FullName+'.sig').Trim()
+          $url='https://github.com/'+$env:GITHUB_REPOSITORY+'/releases/download/test-channel/'+[uri]::EscapeDataString($exe.Name)
+          @{version=$env:TEST_VERSION;notes='Isolated VM acceptance build';platforms=@{'windows-x86_64'=@{signature=$sig;url=$url}}} | ConvertTo-Json -Depth 5 | Set-Content latest-test.json
+          gh release view test-channel *> $null
+          if ($LASTEXITCODE -ne 0) { gh release create test-channel --prerelease --title 'Easy Switch Test Channel' --notes 'Only for isolated VM acceptance; separate application and data directory.' }
+          gh release upload test-channel $exe.FullName ($exe.FullName+'.sig') latest-test.json --clobber
+          if ($LASTEXITCODE -ne 0) { throw 'Test publication failed.' }

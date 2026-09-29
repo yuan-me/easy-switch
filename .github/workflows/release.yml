@@ -1,0 +1,42 @@
+name: Release
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  windows:
+    runs-on: windows-latest
+    environment: release
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: npm ci
+      - run: cargo test --workspace --locked
+      - name: Require signing configuration
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        shell: pwsh
+        run: |
+          if (-not $env:TAURI_SIGNING_PRIVATE_KEY) { throw 'Missing updater signing key; refusing unsigned release.' }
+          $config=Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json
+          if (-not $config.plugins.updater.pubkey) { throw 'Missing updater public key.' }
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: v__VERSION__
+          releaseName: Easy Switch v__VERSION__
+          releaseBody: See CHANGELOG.md for changes and validation boundaries.
+          releaseDraft: true
+          prerelease: false
+          includeUpdaterJson: true
+          args: --bundles nsis --config '{"bundle":{"createUpdaterArtifacts":true}}'

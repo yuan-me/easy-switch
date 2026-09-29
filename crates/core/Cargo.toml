@@ -1,0 +1,33 @@
+[package]
+name = "easy-switch-core"
+version = "1.0.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+toml_edit = "0.22"
+uuid = { version = "1", features = ["v4", "serde"] }
+sha2 = "0.10"
+base64 = "0.22"
+fs2 = "0.4"
+walkdir = "2"
+chrono = { version = "0.4", features = ["serde"] }
+rusqlite = { version = "0.32", features = ["bundled", "backup"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
+tokio = { version = "1", features = ["full"] }
+tokio-util = "0.7"
+axum = "0.8"
+futures-util = "0.3"
+async-stream = "0.3"
+rand = "0.8"
+sysinfo = "0.33"
+url = "2"
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.61", features = ["Win32_Foundation", "Win32_Security_Cryptography", "Win32_System_Memory", "Win32_UI_WindowsAndMessaging", "Win32_UI_Input_KeyboardAndMouse", "Win32_System_Com", "Win32_UI_Shell"] }
+
+[dev-dependencies]
+tempfile = "3"
+minisign-verify = "0.2"
