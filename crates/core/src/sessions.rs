@@ -635,7 +635,7 @@ pub fn stage_changes(
         )?;
     }
     let offsets = if matches!(action, "provider" | "migrate") {
-        let shifts = crate::history::stage_metadata(
+        crate::history::stage_metadata(
             j,
             settings,
             &expanded,
@@ -646,8 +646,7 @@ pub fn stage_changes(
             },
             value.context("缺少修改值")?,
             ct,
-        )?;
-        crate::history::active_shifts(settings, &shifts)?
+        )?
     } else {
         HashMap::new()
     };

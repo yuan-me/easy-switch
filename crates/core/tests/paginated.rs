@@ -191,7 +191,9 @@ fn unpadded() -> (
     drop(db);
     let db = rusqlite::Connection::open(s.codex_home.join("thread_history_1.sqlite")).unwrap();
     db.execute_batch("CREATE TABLE thread_turns(thread_id TEXT,rollout_byte_offset INTEGER,rollout_end_byte_offset INTEGER,rollout_ordinal INTEGER,unknown TEXT);CREATE TABLE thread_history_projection_state(thread_id TEXT PRIMARY KEY,next_rollout_byte_offset INTEGER,next_rollout_ordinal INTEGER);").unwrap();
-    for (id, path) in [(&id, &b), (&child, &c)] {
+    // Codex projection thread_id is the physical rollout ID, including old revisions.
+    for path in [&a, &b, &c] {
+        let id = history::rollout_id(path).unwrap();
         let raw = fs::read(path).unwrap();
         let start = raw.iter().position(|b| *b == b'\n').unwrap() + 1;
         db.execute(
@@ -199,7 +201,7 @@ fn unpadded() -> (
             rusqlite::params![id, start, raw.len()],
         )
         .unwrap();
-        db.execute("INSERT INTO thread_turns VALUES(?1,0,NULL,0,'keep')", [id])
+        db.execute("INSERT INTO thread_turns VALUES(?1,0,NULL,0,'keep')", [&id])
             .unwrap();
         db.execute(
             "INSERT INTO thread_history_projection_state VALUES(?1,?2,8)",
@@ -264,9 +266,9 @@ fn duplicate_indexes_rebase_every_projection_once_and_restore() {
     }
     for path in [&projection, &mirror_projection] {
         let db = rusqlite::Connection::open(path).unwrap();
-        for rollout in [&b, &c] {
+        for rollout in [&a, &b, &c] {
             let bytes = fs::read(rollout).unwrap();
-            let thread = history::header(rollout).unwrap().id;
+            let thread = history::rollout_id(rollout).unwrap();
             let row:(usize,usize,i64)=db.query_row("SELECT rollout_byte_offset,rollout_end_byte_offset,rollout_ordinal FROM thread_turns WHERE thread_id=?1 AND rollout_ordinal=7",[&thread],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).unwrap();
             assert_eq!(
                 row,
@@ -295,6 +297,46 @@ fn selected(s: &Settings, id: &str) -> Vec<sessions::Session> {
         .into_iter()
         .filter(|row| row.id == id)
         .collect()
+}
+#[test]
+fn revision_only_projection_survives_official_api_round_trips() {
+    let (t, s, id, a, b, c) = unpadded();
+    let projection = s.codex_home.join("thread_history_1.sqlite");
+    let db = rusqlite::Connection::open(&projection).unwrap();
+    for table in ["thread_turns", "thread_history_projection_state"] {
+        db.execute(&format!("DELETE FROM {table} WHERE thread_id=?1"), [&id])
+            .unwrap();
+    }
+    drop(db);
+    let bodies = [body(&a), body(&b), body(&c)];
+    for provider in ["p_b48e2743bb85", "openai", "p_another_longer_provider"] {
+        let mut j = Journal::new(&t.path().join("store"), "switch").unwrap();
+        sessions::stage_changes(
+            &mut j,
+            &s,
+            &selected(&s, &id),
+            "provider",
+            Some(provider),
+            &CancellationToken::new(),
+        )
+        .unwrap();
+        j.commit().unwrap();
+        let db = rusqlite::Connection::open(&projection).unwrap();
+        for path in [&b, &c] {
+            let rollout = history::rollout_id(path).unwrap();
+            let bytes = fs::read(path).unwrap();
+            let start = bytes.iter().position(|b| *b == b'\n').unwrap() + 1;
+            let positions: (usize, usize) = db.query_row("SELECT rollout_byte_offset,rollout_end_byte_offset FROM thread_turns WHERE thread_id=?1 AND rollout_ordinal=7", [&rollout], |r| Ok((r.get(0)?, r.get(1)?))).unwrap();
+            assert_eq!(positions, (start, bytes.len()));
+            assert_eq!(db.query_row("SELECT next_rollout_byte_offset FROM thread_history_projection_state WHERE thread_id=?1", [&rollout], |r| r.get::<_, usize>(0)).unwrap(), bytes.len());
+        }
+        for (path, expected) in [&a, &b, &c].iter().zip(&bodies) {
+            assert_eq!(&body(path), expected);
+        }
+        let rows = selected(&s, &id);
+        assert_eq!(rows[0].provider, provider);
+        assert_eq!(sessions::detail(&rows[0], 100).unwrap().messages.len(), 2);
+    }
 }
 #[test]
 fn growth_rebases_revisions_children_and_sqlite_then_restores_exact_bytes() {
@@ -339,15 +381,15 @@ fn growth_rebases_revisions_children_and_sqlite_then_restores_exact_bytes() {
     );
     assert_eq!(sessions::detail(&rows[0], 100).unwrap().messages.len(), 2);
     let db = rusqlite::Connection::open(&paths[4]).unwrap();
-    for path in [&b, &c] {
-        let h = history::header(path).unwrap();
+    for path in [&a, &b, &c] {
+        let rollout = history::rollout_id(path).unwrap();
         let bytes = fs::read(path).unwrap();
         let boundary = bytes.iter().position(|b| *b == b'\n').unwrap() + 1;
-        let got:(usize,usize,i64,String)=db.query_row("SELECT rollout_byte_offset,rollout_end_byte_offset,rollout_ordinal,unknown FROM thread_turns WHERE thread_id=?1 AND rollout_ordinal=7",[&h.id],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?))).unwrap();
+        let got:(usize,usize,i64,String)=db.query_row("SELECT rollout_byte_offset,rollout_end_byte_offset,rollout_ordinal,unknown FROM thread_turns WHERE thread_id=?1 AND rollout_ordinal=7",[&rollout],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?))).unwrap();
         assert_eq!(got, (boundary, bytes.len(), 7, "keep".into()));
-        let cursor:(usize,i64)=db.query_row("SELECT next_rollout_byte_offset,next_rollout_ordinal FROM thread_history_projection_state WHERE thread_id=?1",[&h.id],|r|Ok((r.get(0)?,r.get(1)?))).unwrap();
+        let cursor:(usize,i64)=db.query_row("SELECT next_rollout_byte_offset,next_rollout_ordinal FROM thread_history_projection_state WHERE thread_id=?1",[&rollout],|r|Ok((r.get(0)?,r.get(1)?))).unwrap();
         assert_eq!(cursor, (bytes.len(), 8));
-        assert_eq!(db.query_row("SELECT rollout_byte_offset FROM thread_turns WHERE thread_id=?1 AND rollout_end_byte_offset IS NULL",[&h.id],|r|r.get::<_,i64>(0)).unwrap(),0);
+        assert_eq!(db.query_row("SELECT rollout_byte_offset FROM thread_turns WHERE thread_id=?1 AND rollout_end_byte_offset IS NULL",[&rollout],|r|r.get::<_,i64>(0)).unwrap(),0);
     }
     drop(db);
     let operation = j.dir.file_name().unwrap().to_str().unwrap().to_owned();
@@ -431,17 +473,19 @@ fn invalid_projection_offset_refuses_before_commit() {
     .unwrap();
     drop(db);
     let mut j = Journal::new(&t.path().join("store"), "invalid").unwrap();
-    assert!(
-        sessions::stage_changes(
-            &mut j,
-            &s,
-            &selected(&s, &id),
-            "provider",
-            Some("p_b48e2743bb85"),
-            &CancellationToken::new()
-        )
-        .is_err()
-    );
+    let error = sessions::stage_changes(
+        &mut j,
+        &s,
+        &selected(&s, &id),
+        "provider",
+        Some("p_b48e2743bb85"),
+        &CancellationToken::new(),
+    )
+    .unwrap_err();
+    let message = format!("{error:#}");
+    assert!(message.contains("thread_history_projection_state.next_rollout_byte_offset"));
+    assert!(message.contains("偏移 2"));
+    assert!(message.contains("分页历史偏移未对齐事件边界"));
     for (p, old) in [&a, &b, &c].iter().zip(before) {
         assert_eq!(fs::read(p).unwrap(), old);
     }

@@ -215,7 +215,6 @@ impl MetadataLine {
         anyhow::bail!("缺少 session_meta")
     }
 }
-#[derive(Clone, PartialEq, Eq)]
 pub struct OffsetShift {
     path: PathBuf,
     start: u64,
@@ -318,7 +317,8 @@ fn resolve_metadata(
 }
 
 /// Stage selected paginated metadata and every affected descendant in the same journal.
-/// Legacy edits keep their existing path. Returned shifts are keyed by physical rollout path.
+/// Legacy edits keep their existing path. SQLite projection thread_id keys are physical
+/// rollout IDs, not logical thread IDs or the current threads.rollout_path.
 pub fn stage_metadata(
     journal: &mut crate::journal::Journal,
     settings: &Settings,
@@ -383,7 +383,10 @@ pub fn stage_metadata(
             continue;
         }
         if shift.delta > 0 {
-            shifts.insert(path_key(&m.path)?, shift);
+            shifts.insert(
+                rollout_id(&m.path).context("无法识别分页历史文件标识")?,
+                shift,
+            );
         }
         let temp = journal.dir.join(format!("{}.jsonl", uuid::Uuid::new_v4()));
         let result = (|| -> Result<()> {
@@ -447,42 +450,11 @@ pub fn stage_metadata(
     Ok(shifts)
 }
 
-/// SQLite projections refer to the canonical rollout in threads.rollout_path, not every
-/// revision sharing the same thread ID. Never apply a historical revision's delta twice.
-pub fn active_shifts(
-    settings: &Settings,
-    shifts: &std::collections::HashMap<String, OffsetShift>,
-) -> Result<std::collections::HashMap<String, OffsetShift>> {
-    let mut active = std::collections::HashMap::new();
-    if shifts.is_empty() {
-        return Ok(active);
-    }
-    for path in sessions::databases(settings)? {
-        let db = sessions::open(&path)?;
-        if !sessions::columns(&db, "threads")?.contains("rollout_path") {
-            continue;
-        }
-        let mut query = db.prepare("SELECT id,rollout_path FROM threads")?;
-        let mut rows = query.query([])?;
-        while let Some(row) = rows.next()? {
-            let id: String = row.get(0)?;
-            let path = PathBuf::from(row.get::<_, String>(1)?);
-            if let Some(shift) = shifts.get(&path_key(&path)?) {
-                ensure!(
-                    active.get(&id).is_none_or(|existing| existing == shift),
-                    "线程存在冲突的定位索引"
-                );
-                active.insert(id, shift.clone());
-            }
-        }
-    }
-    Ok(active)
-}
 pub fn rebase_database(
     db: &rusqlite::Connection,
-    active: &std::collections::HashMap<String, OffsetShift>,
+    shifts: &std::collections::HashMap<String, OffsetShift>,
 ) -> Result<()> {
-    if active.is_empty() {
+    if shifts.is_empty() {
         return Ok(());
     }
     let known = [
@@ -504,14 +476,17 @@ pub fn rebase_database(
                 known.contains(&(table.as_str(), column.as_str())) && columns.contains("thread_id"),
                 "未知分页历史偏移结构，未提交"
             );
-            for (id, shift) in active {
+            for (id, shift) in shifts {
                 let mut query = db.prepare(&format!("SELECT DISTINCT {column} FROM {table} WHERE thread_id=?1 AND {column} IS NOT NULL"))?;
                 let offsets = query
                     .query_map([id], |r| r.get::<_, i64>(0))?
                     .collect::<std::result::Result<Vec<_>, _>>()?;
                 for offset in offsets {
                     ensure!(offset >= 0, "分页历史偏移为负数");
-                    i64::try_from(shift.translate(offset as u64)?).context("数据库偏移溢出")?;
+                    let translated = shift.translate(offset as u64).with_context(|| {
+                        format!("分页索引异常：{table}.{column}，历史文件 {id}，偏移 {offset}")
+                    })?;
+                    i64::try_from(translated).context("数据库偏移溢出")?;
                 }
                 db.execute(&format!("UPDATE {table} SET {column}={column}+?1 WHERE thread_id=?2 AND {column}>=?3"),rusqlite::params![i64::try_from(shift.delta)?,id,i64::try_from(shift.end)?])?;
             }
