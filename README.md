@@ -1,8 +1,18 @@
 # Easy Switch
 
+<img src="src-tauri/icons/128x128.png" alt="Easy Switch 图标" width="80" height="80">
+
 Windows x64 的 Codex 供应商与会话管理工具，使用 Tauri 2、Rust、React/TypeScript。
 
-**[下载 Easy Switch v1.0.2（Windows x64）](https://github.com/yuan-me/easy-switch/releases/tag/v1.0.2)**。已验证 Sub2API 实际作图、官方/API 往返切换、Windows 覆盖安装和 GitHub 真实自动升级。完整迁移计划仍有未覆盖项目，见 [验证记录](docs/VALIDATION.md)。
+**[下载 v1.0.2 安装包](https://github.com/yuan-me/easy-switch/releases/download/v1.0.2/Easy.Switch_1.0.2_x64-setup.exe)** · [最新正式版](https://github.com/yuan-me/easy-switch/releases/latest) · [更新记录](CHANGELOG.md)
+
+## 安装与使用
+
+1. 下载并运行 `Easy.Switch_1.0.2_x64-setup.exe`，安装到当前 Windows 用户。缺少 WebView2 时，安装器会联网下载其引导程序。
+2. 打开 Easy Switch，在“设置”中确认 Codex 数据目录和桌面程序路径。
+3. 在“供应商”中添加配置并切换。使用 Sub2API 图片能力时，选择 Responses 协议并开启“Sub2API 图片工具兼容”，完整重启 Codex 后在新会话验证。
+
+普通使用无需安装 Rust 或 Node.js。`test-channel` 是独立验收通道，日常使用请选择正式版。
 
 ## 功能
 
@@ -11,7 +21,21 @@ Windows x64 的 Codex 供应商与会话管理工具，使用 Tauri 2、Rust、R
 - 会话搜索、分页、预览、Token 统计、Markdown 导出、归档恢复、Provider 修复、项目关联迁移及可恢复删除。
 - 当前 Windows 用户的 DPAPI 凭证与备份加密；提交日志、摘要校验、外部修改与 SQLite WAL 保护。关闭 Easy Switch 窗口不终止仍在服务的独立 Runtime。
 - 系统/浅色/深色主题；供应商编辑抽屉、会话分栏、窗口尺寸与阅读位置保存。
-- GitHub Releases 签名更新：启动后台检查，24 小时轮询；自动下载、用户确认安装。安装前要求 Codex 已退出、代理无活动请求且无会话修改操作。
+- GitHub Releases 签名更新，支持自动下载和手动检查。
+
+## 自动更新
+
+默认在启动后后台检查更新，运行期间每 24 小时再检查一次；发现新版后自动下载，在“设置 → 软件更新”中确认安装并重启。可分别关闭自动检查和自动下载，也可点击“检查更新”。
+
+安装前要求 Codex 已正常退出、代理无活动请求且无会话修改操作。下载失败可重试，签名或版本校验失败时拒绝安装；配置和会话存放在独立数据目录。需要回退时，可从 Releases 重新安装上一版本。
+
+## 已验证与当前边界
+
+- Windows 11 虚拟机：Sub2API 新会话实际出图、官方/API 往返切换、分页历史元数据扩容及覆盖安装。
+- GitHub 真实更新：测试版 `test.1 → test.2` 自动下载、签名校验、确认安装、自动重启及旧包重装；配置、DPAPI 凭证、会话和阅读位置保留。正式版更新地址也已验证。
+- 自动化验证：89 项 Rust 测试、3 组界面测试和 9 项原生烟测；发布包与安装后的六尺寸图标检查通过。
+
+实际官方账号请求、混入模式、历史会话继续发送、完整批量故障场景，以及 Windows 系统 DPI 和长期资源验收仍未全部覆盖。详见 [验证记录](docs/VALIDATION.md)，不将构建成功视为全部功能验收完成。
 
 ## 数据与迁移
 
