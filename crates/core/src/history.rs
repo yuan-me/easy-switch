@@ -215,7 +215,7 @@ impl MetadataLine {
         anyhow::bail!("缺少 session_meta")
     }
 }
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct OffsetShift {
     path: PathBuf,
     start: u64,
@@ -468,7 +468,10 @@ pub fn active_shifts(
             let id: String = row.get(0)?;
             let path = PathBuf::from(row.get::<_, String>(1)?);
             if let Some(shift) = shifts.get(&path_key(&path)?) {
-                ensure!(!active.contains_key(&id), "线程存在重复定位索引");
+                ensure!(
+                    active.get(&id).is_none_or(|existing| existing == shift),
+                    "线程存在冲突的定位索引"
+                );
                 active.insert(id, shift.clone());
             }
         }

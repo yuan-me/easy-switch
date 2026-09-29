@@ -1,9 +1,11 @@
 // Runs only the Easy Switch test executable against synthetic files; no host Codex mutation.
 const {chromium}=require('@playwright/test');const fs=require('node:fs');const path=require('node:path');const {spawn}=require('node:child_process');const assert=require('node:assert/strict');const {randomUUID}=require('node:crypto');
+const {DatabaseSync}=require('node:sqlite');
 (async()=>{
  const root=path.resolve('artifacts/native-smoke-'+Date.now()),home=path.join(root,'home'),store=path.join(root,'store');fs.mkdirSync(path.join(home,'sessions'),{recursive:true});fs.mkdirSync(store);const id=randomUUID();
  fs.writeFileSync(path.join(home,'sessions','example.jsonl'),[JSON.stringify({type:'session_meta',payload:{id,cwd:home,model_provider:'openai'}}),JSON.stringify({type:'event_msg',payload:{type:'user_message',message:'合成会话 · 原生窗口验收'}}),JSON.stringify({type:'response_item',payload:{type:'message',role:'assistant',content:[{type:'output_text',text:'这是一条合成测试内容，不含真实会话。'}]}})].join('\n')+'\n');
  fs.writeFileSync(path.join(store,'settings.json'),JSON.stringify({codexHome:home,automaticUpdates:false,automaticDownload:false,theme:'light'}));
+ for(const name of ['state_5.sqlite','state_6.sqlite']){const db=new DatabaseSync(path.join(home,name));db.exec('CREATE TABLE threads(id TEXT PRIMARY KEY,title TEXT,cwd TEXT,model_provider TEXT,rollout_path TEXT,updated_at INTEGER,archived INTEGER)');db.prepare('INSERT INTO threads VALUES(?,?,?,?,?,?,?)').run(id,'合成会话 · 重复索引',home,'openai',path.join(home,'sessions','example.jsonl'),1000,0);db.close()}
  const exe=path.resolve('target/release/easy-switch.exe');const proc=spawn(exe,['--store',store],{env:{...process.env,WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS:'--remote-debugging-port=47846 --remote-debugging-address=127.0.0.1'},windowsHide:true,stdio:'ignore'});let browser;
  try{for(let n=0;n<80;n++){try{browser=await chromium.connectOverCDP('http://127.0.0.1:47846');break}catch{await new Promise(r=>setTimeout(r,250))}}assert.ok(browser,'Native WebView2 did not start');const page=browser.contexts()[0].pages()[0];await page.waitForSelector('h1');
  const invoke=(command,args={})=>page.evaluate(({command,args})=>window.__TAURI_INTERNALS__.invoke(command,args),{command,args});

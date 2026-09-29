@@ -213,6 +213,79 @@ fn body(path: &std::path::Path) -> Vec<u8> {
     let bytes = fs::read(path).unwrap();
     bytes[bytes.iter().position(|b| *b == b'\n').unwrap() + 1..].to_vec()
 }
+#[test]
+fn duplicate_indexes_rebase_every_projection_once_and_restore() {
+    let (t, s, id, a, b, c) = unpadded();
+    let state = s.codex_home.join("state.sqlite");
+    let mirror = s.codex_home.join("state_6.sqlite");
+    let projection = s.codex_home.join("thread_history_1.sqlite");
+    let mirror_projection = s.codex_home.join("thread_history_2.sqlite");
+    fs::copy(&state, &mirror).unwrap();
+    fs::copy(&projection, &mirror_projection).unwrap();
+    let paths = [
+        a.clone(),
+        b.clone(),
+        c.clone(),
+        state.clone(),
+        mirror.clone(),
+        projection.clone(),
+        mirror_projection.clone(),
+    ];
+    let before: Vec<_> = paths.iter().map(|p| fs::read(p).unwrap()).collect();
+    let bodies = [body(&a), body(&b), body(&c)];
+    let rows = selected(&s, &id);
+    assert_eq!(rows.len(), 1);
+    let store = t.path().join("store");
+    let mut j = Journal::new(&store, "duplicate pagination").unwrap();
+    sessions::stage_changes(
+        &mut j,
+        &s,
+        &rows,
+        "provider",
+        Some("p_b48e2743bb85"),
+        &CancellationToken::new(),
+    )
+    .unwrap();
+    j.commit().unwrap();
+    for (path, expected) in [&a, &b, &c].iter().zip(bodies) {
+        assert_eq!(body(path), expected);
+    }
+    for path in [&state, &mirror] {
+        let db = rusqlite::Connection::open(path).unwrap();
+        assert_eq!(
+            db.query_row(
+                "SELECT model_provider FROM threads WHERE id=?1",
+                [&id],
+                |r| r.get::<_, String>(0)
+            )
+            .unwrap(),
+            "p_b48e2743bb85"
+        );
+    }
+    for path in [&projection, &mirror_projection] {
+        let db = rusqlite::Connection::open(path).unwrap();
+        for rollout in [&b, &c] {
+            let bytes = fs::read(rollout).unwrap();
+            let thread = history::header(rollout).unwrap().id;
+            let row:(usize,usize,i64)=db.query_row("SELECT rollout_byte_offset,rollout_end_byte_offset,rollout_ordinal FROM thread_turns WHERE thread_id=?1 AND rollout_ordinal=7",[&thread],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).unwrap();
+            assert_eq!(
+                row,
+                (
+                    bytes.iter().position(|b| *b == b'\n').unwrap() + 1,
+                    bytes.len(),
+                    7
+                )
+            );
+            assert_eq!(db.query_row("SELECT next_rollout_byte_offset FROM thread_history_projection_state WHERE thread_id=?1",[&thread],|r|r.get::<_,usize>(0)).unwrap(),bytes.len());
+        }
+    }
+    let operation = j.dir.file_name().unwrap().to_string_lossy().into_owned();
+    drop(j);
+    easy_switch_core::journal::restore(&store, &operation, &[s.codex_home.clone()]).unwrap();
+    for (path, bytes) in paths.iter().zip(before) {
+        assert_eq!(fs::read(path).unwrap(), bytes);
+    }
+}
 fn selected(s: &Settings, id: &str) -> Vec<sessions::Session> {
     let scan = sessions::Scanner::default()
         .scan(s, &CancellationToken::new())

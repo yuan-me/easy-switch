@@ -26,6 +26,8 @@ pub struct Session {
     pub updated: i64,
     pub archived: bool,
     pub database: Option<PathBuf>,
+    #[serde(default, skip_serializing)]
+    pub related_databases: Vec<PathBuf>,
     #[serde(default)]
     pub related_paths: Vec<PathBuf>,
 }
@@ -125,6 +127,7 @@ pub fn owned(path: &Path, settings: &Settings) -> Result<PathBuf> {
 }
 pub fn databases(settings: &Settings) -> Result<Vec<PathBuf>> {
     let mut all = vec![];
+    let mut seen = HashSet::new();
     for root in [
         settings.codex_home.clone(),
         settings
@@ -146,12 +149,14 @@ pub fn databases(settings: &Settings) -> Result<Vec<PathBuf>> {
                 )
             {
                 no_links(&p)?;
-                if !all.contains(&p) {
+                let p = normalize(&p)?;
+                if seen.insert(p.to_string_lossy().to_lowercase()) {
                     all.push(p);
                 }
             }
         }
     }
+    all.sort_by_key(|p| p.to_string_lossy().to_lowercase());
     Ok(all)
 }
 pub fn open(path: &Path) -> Result<Connection> {
@@ -183,7 +188,7 @@ impl Scanner {
     pub fn scan(&mut self, settings: &Settings, ct: &CancellationToken) -> Result<Scan> {
         let mut out = Scan::default();
         let mut indexed = HashSet::new();
-        let mut ids = HashSet::new();
+        let mut ids: HashMap<String, usize> = HashMap::new();
         for path in databases(settings)? {
             cancellation(ct)?;
             let result = (|| -> Result<Vec<Session>> {
@@ -219,6 +224,7 @@ impl Scanner {
                         updated: if t > 100_000_000_000 { t / 1000 } else { t },
                         archived: r.get::<_, i64>(6)? != 0,
                         database: Some(path.clone()),
+                        related_databases: vec![],
                         related_paths: vec![],
                     });
                 }
@@ -226,10 +232,44 @@ impl Scanner {
             })();
             match result {
                 Ok(items) => {
-                    for item in items {
-                        if !ids.insert(item.id.clone()) {
-                            out.warnings.push(format!("重复线程索引：{}", item.id));
+                    for mut item in items {
+                        if let Some(&position) = ids.get(&item.id) {
+                            let existing = &mut out.sessions[position];
+                            let same_database = existing.database == item.database
+                                || existing.related_databases.contains(&path);
+                            let same_file = existing
+                                .path
+                                .to_string_lossy()
+                                .eq_ignore_ascii_case(&item.path.to_string_lossy());
+                            if same_database || !same_file || existing.archived != item.archived {
+                                out.warnings.push(format!(
+                                    "线程索引冲突：{}（{}、{}；{}）",
+                                    item.id,
+                                    existing
+                                        .database
+                                        .as_ref()
+                                        .and_then(|p| p.file_name())
+                                        .unwrap_or_default()
+                                        .to_string_lossy(),
+                                    path.file_name().unwrap_or_default().to_string_lossy(),
+                                    if same_database {
+                                        "同一数据库内 ID 重复"
+                                    } else if !same_file {
+                                        "会话文件不同"
+                                    } else {
+                                        "归档状态不同"
+                                    }
+                                ));
+                                continue;
+                            }
+                            // Mirrored indexes may have stale display metadata. Keep all write targets.
+                            if item.updated > existing.updated {
+                                std::mem::swap(existing, &mut item);
+                            }
+                            existing.related_databases.push(item.database.unwrap());
+                            existing.related_databases.extend(item.related_databases);
                         } else {
+                            ids.insert(item.id.clone(), out.sessions.len());
                             indexed.insert(item.path.to_string_lossy().to_lowercase());
                             out.sessions.push(item);
                         }
@@ -294,6 +334,7 @@ impl Scanner {
                                     as i64,
                                 archived: folder == "archived_sessions",
                                 database: None,
+                                related_databases: vec![],
                                 related_paths: vec![],
                             });
                         }
@@ -315,11 +356,11 @@ impl Scanner {
                 })();
                 match result {
                     Ok(item) => {
-                        if ids.insert(item.id.clone()) {
+                        if !ids.contains_key(&item.id) {
+                            ids.insert(item.id.clone(), out.sessions.len());
                             out.sessions.push(item);
                         } else {
-                            let existing =
-                                out.sessions.iter_mut().find(|s| s.id == item.id).unwrap();
+                            let existing = &mut out.sessions[ids[&item.id]];
                             if crate::history::same_paginated_thread(&existing.path, &item.path)
                                 .unwrap_or(false)
                             {
@@ -442,15 +483,19 @@ pub fn detail(session: &Session, limit: usize) -> Result<Detail> {
     if out.messages.is_empty() {
         out.messages = events;
     }
-    if let Some(path) = &session.database {
+    let mut relations = HashSet::new();
+    for path in session.database.iter().chain(&session.related_databases) {
         let c = open(path)?;
         let cols = columns(&c, "thread_spawn_edges")?;
         if cols.contains("parent_thread_id") && cols.contains("child_thread_id") {
             let mut q=c.prepare("SELECT parent_thread_id,child_thread_id FROM thread_spawn_edges WHERE parent_thread_id=?1 OR child_thread_id=?1")?;
             let mut rows = q.query([&session.id])?;
             while let Some(r) = rows.next()? {
-                out.relations
-                    .push(json!({"parent":r.get::<_,String>(0)?,"child":r.get::<_,String>(1)?}));
+                let relation = (r.get::<_, String>(0)?, r.get::<_, String>(1)?);
+                if relations.insert(relation.clone()) {
+                    out.relations
+                        .push(json!({"parent":relation.0,"child":relation.1}));
+                }
             }
         }
     }
@@ -577,6 +622,7 @@ pub fn stage_changes(
             let mut part = item.clone();
             part.path = related.clone();
             part.database = None;
+            part.related_databases.clear();
             part.related_paths.clear();
             part.archived = within(related, &settings.codex_home.join("archived_sessions"))?;
             expanded.push(part);
@@ -688,12 +734,15 @@ pub fn stage_changes(
         drop(c);
         let selected: Vec<_> = items
             .iter()
-            .filter(|s| s.database.as_ref() == Some(&database))
+            .filter(|s| {
+                s.database.as_ref() == Some(&database) || s.related_databases.contains(&database)
+            })
             .collect();
         if selected.is_empty() && cat_cols.is_empty() && !has_offsets {
             continue;
         }
         stage_database(j, &database, |db| {
+            let mut local_projects = HashMap::new();
             if has_offsets {
                 crate::history::rebase_database(db, &offsets)?;
             }
@@ -704,6 +753,18 @@ pub fn stage_changes(
                 )?;
             }
             for item in &selected {
+                let (rollout, archived): (String, i64) = db.query_row(
+                    "SELECT rollout_path,archived FROM threads WHERE id=?1",
+                    [&item.id],
+                    |r| Ok((r.get(0)?, r.get(1)?)),
+                )?;
+                ensure!(
+                    owned(Path::new(&rollout), settings)?
+                        .to_string_lossy()
+                        .eq_ignore_ascii_case(&item.path.to_string_lossy())
+                        && (archived != 0) == item.archived,
+                    "扫描后线程索引发生变化，未修改"
+                );
                 let affected = match action {
                     "provider" => db.execute(
                         "UPDATE threads SET model_provider=?1 WHERE id=?2",
@@ -711,7 +772,10 @@ pub fn stage_changes(
                     )?,
                     "migrate" => {
                         let project = project_for(db, value.context("目标路径缺失")?)?;
-                        projects.insert(item.id.clone(), project.clone());
+                        local_projects.insert(item.id.clone(), project.clone());
+                        if item.database.as_ref() == Some(&database) {
+                            projects.insert(item.id.clone(), project.clone());
+                        }
                         let n = db.execute(
                             "UPDATE threads SET cwd=?1 WHERE id=?2",
                             params![value, &item.id],
@@ -770,7 +834,7 @@ pub fn stage_changes(
                         }
                         "migrate" => {
                             required(&cat_cols, &["cwd", "project_id"])?;
-                            db.execute(&format!("UPDATE local_thread_catalog SET cwd=?2,project_id=?3 WHERE {LOCAL}"),params![item.id,value,projects.get(&item.id).and_then(|p|p.as_deref())])?;
+                            db.execute(&format!("UPDATE local_thread_catalog SET cwd=?2,project_id=?3 WHERE {LOCAL}"),params![item.id,value,local_projects.get(&item.id).or_else(|| projects.get(&item.id)).and_then(|p|p.as_deref())])?;
                         }
                         "archive" | "delete" => {
                             db.execute(

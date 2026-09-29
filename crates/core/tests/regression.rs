@@ -204,6 +204,332 @@ fn db(f: &Fixture) -> PathBuf {
     path
 }
 #[test]
+fn duplicate_indexes_switch_all_databases_without_changing_body() {
+    let f = fixture();
+    let first = db(&f);
+    let second = f.settings.codex_home.join("state_6.sqlite");
+    fs::copy(&first, &second).unwrap();
+    let c = rusqlite::Connection::open(&second).unwrap();
+    c.execute(
+        "UPDATE threads SET title='Current',updated_at=2000,model_provider='stale'",
+        [],
+    )
+    .unwrap();
+    drop(c);
+    fs::create_dir_all(f.settings.codex_home.join("sqlite")).unwrap();
+    let third = f.settings.codex_home.join("sqlite/mirror.sqlite");
+    fs::copy(&second, &third).unwrap();
+    let c = rusqlite::Connection::open(&third).unwrap();
+    c.execute("UPDATE threads SET updated_at=3000", []).unwrap();
+    drop(c);
+    let before = fs::read(&f.file).unwrap();
+    let rows = scan(&f);
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].title, "Current");
+    let all = vec![api("a"), api("b")];
+    f.store.save("providers.json", &all).unwrap();
+    let host = FakeHost {
+        stops: AtomicUsize::new(0),
+        starts: AtomicUsize::new(0),
+        fail: false,
+    };
+    for provider in [&all[1], &all[0]] {
+        service::switch(&f.store, provider, &host, &CancellationToken::new(), |_| {}).unwrap();
+        assert_eq!(scan(&f).len(), 1);
+        for path in [&first, &second, &third] {
+            let c = rusqlite::Connection::open(path).unwrap();
+            let row: (String, String) = c
+                .query_row("SELECT model_provider,unknown FROM threads", [], |r| {
+                    Ok((r.get(0)?, r.get(1)?))
+                })
+                .unwrap();
+            assert_eq!(row, (provider.id.clone(), "preserve".into()));
+        }
+        let after = fs::read(&f.file).unwrap();
+        assert_eq!(
+            &before[before.iter().position(|b| *b == b'\n').unwrap() + 1..],
+            &after[after.iter().position(|b| *b == b'\n').unwrap() + 1..]
+        );
+    }
+    assert_eq!(host.starts.load(Ordering::SeqCst), 2);
+}
+
+#[test]
+fn duplicate_indexes_migration_keeps_each_catalog_project_reference() {
+    let f = fixture();
+    let first = db(&f);
+    let c = rusqlite::Connection::open(&first).unwrap();
+    c.execute_batch("ALTER TABLE threads ADD COLUMN project_id TEXT; CREATE TABLE projects(id TEXT PRIMARY KEY,name TEXT,metadata TEXT,position INTEGER,created_at_ms INTEGER,updated_at_ms INTEGER); CREATE TABLE project_roots(project_id TEXT,position INTEGER,path TEXT); CREATE TABLE local_thread_catalog(host_id TEXT,thread_id TEXT,cwd TEXT,project_id TEXT); CREATE TABLE local_thread_catalog_hosts(host_id TEXT,host_kind TEXT); INSERT INTO local_thread_catalog_hosts VALUES('local','local');").unwrap();
+    c.execute(
+        "INSERT INTO local_thread_catalog VALUES('local',?1,'D:/old',NULL)",
+        [&f.id],
+    )
+    .unwrap();
+    drop(c);
+    let second = f.settings.codex_home.join("state_6.sqlite");
+    fs::copy(&first, &second).unwrap();
+    let c = rusqlite::Connection::open(&second).unwrap();
+    c.execute("UPDATE threads SET updated_at=2000", []).unwrap();
+    drop(c);
+    let catalog = f.settings.codex_home.join("catalog.sqlite");
+    let c = rusqlite::Connection::open(&catalog).unwrap();
+    c.execute_batch("CREATE TABLE local_thread_catalog(host_id TEXT,thread_id TEXT,cwd TEXT,project_id TEXT); CREATE TABLE local_thread_catalog_hosts(host_id TEXT,host_kind TEXT); INSERT INTO local_thread_catalog_hosts VALUES('local','local');").unwrap();
+    c.execute(
+        "INSERT INTO local_thread_catalog VALUES('local',?1,'D:/old',NULL)",
+        [&f.id],
+    )
+    .unwrap();
+    drop(c);
+    let mut j = Journal::new(&f.store.root, "projects").unwrap();
+    stage_changes(
+        &mut j,
+        &f.settings,
+        &scan(&f),
+        "migrate",
+        Some("D:/new"),
+        &CancellationToken::new(),
+    )
+    .unwrap();
+    j.commit().unwrap();
+    let mut current = String::new();
+    for path in [&first, &second] {
+        let c = rusqlite::Connection::open(path).unwrap();
+        let project: String = c
+            .query_row("SELECT project_id FROM threads", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(
+            c.query_row("SELECT project_id FROM local_thread_catalog", [], |r| {
+                r.get::<_, String>(0)
+            })
+            .unwrap(),
+            project
+        );
+        assert_eq!(
+            c.query_row(
+                "SELECT path FROM project_roots WHERE project_id=?1",
+                [&project],
+                |r| r.get::<_, String>(0)
+            )
+            .unwrap(),
+            "D:/new"
+        );
+        if path == &second {
+            current = project;
+        }
+    }
+    let c = rusqlite::Connection::open(&catalog).unwrap();
+    assert_eq!(
+        c.query_row("SELECT project_id FROM local_thread_catalog", [], |r| {
+            r.get::<_, String>(0)
+        })
+        .unwrap(),
+        current
+    );
+}
+
+#[test]
+fn duplicate_indexes_batch_and_restore_cover_every_database() {
+    for action in ["migrate", "archive", "delete"] {
+        let f = fixture();
+        let first = db(&f);
+        let second = f.settings.codex_home.join("state_6.sqlite");
+        fs::copy(&first, &second).unwrap();
+        let paths = [&f.file, &first, &second];
+        let before: Vec<_> = paths.iter().map(|p| fs::read(p).unwrap()).collect();
+        let mut j = Journal::new(&f.store.root, action).unwrap();
+        stage_changes(
+            &mut j,
+            &f.settings,
+            &scan(&f),
+            action,
+            Some("D:/new"),
+            &CancellationToken::new(),
+        )
+        .unwrap();
+        let id = j.dir.file_name().unwrap().to_string_lossy().into_owned();
+        j.commit().unwrap();
+        drop(j);
+        for path in [&first, &second] {
+            let c = rusqlite::Connection::open(path).unwrap();
+            match action {
+                "migrate" => assert_eq!(
+                    c.query_row("SELECT cwd FROM threads", [], |r| r.get::<_, String>(0))
+                        .unwrap(),
+                    "D:/new"
+                ),
+                "archive" => {
+                    let row: (i64, String) = c
+                        .query_row("SELECT archived,rollout_path FROM threads", [], |r| {
+                            Ok((r.get(0)?, r.get(1)?))
+                        })
+                        .unwrap();
+                    assert_eq!(row.0, 1);
+                    assert!(PathBuf::from(row.1).is_file());
+                }
+                "delete" => assert_eq!(
+                    c.query_row("SELECT count(*) FROM threads", [], |r| r.get::<_, i64>(0))
+                        .unwrap(),
+                    0
+                ),
+                _ => unreachable!(),
+            }
+        }
+        restore(&f.store.root, &id, &[f.settings.codex_home.clone()]).unwrap();
+        for (path, bytes) in paths.iter().zip(before) {
+            assert_eq!(fs::read(path).unwrap(), bytes);
+        }
+    }
+}
+
+#[test]
+fn duplicate_indexes_partial_commit_rolls_back_every_file() {
+    let f = fixture();
+    let first = db(&f);
+    let second = f.settings.codex_home.join("state_6.sqlite");
+    fs::copy(&first, &second).unwrap();
+    let paths = [&f.file, &first, &second];
+    let before: Vec<_> = paths.iter().map(|p| fs::read(p).unwrap()).collect();
+    let mut j = Journal::new(&f.store.root, "duplicates").unwrap();
+    stage_changes(
+        &mut j,
+        &f.settings,
+        &scan(&f),
+        "provider",
+        Some("b"),
+        &CancellationToken::new(),
+    )
+    .unwrap();
+    assert!(j.commit_with_fault(Some(2)).is_err());
+    assert_eq!(j.manifest.state, "Restored");
+    for (path, bytes) in paths.iter().zip(before) {
+        assert_eq!(fs::read(path).unwrap(), bytes);
+    }
+}
+
+#[test]
+fn duplicate_indexes_conflicting_paths_and_archive_state_still_block_switch() {
+    for conflict in ["path", "archive", "same_database"] {
+        let f = fixture();
+        let first = db(&f);
+        let second = f.settings.codex_home.join("state_6.sqlite");
+        fs::copy(&first, &second).unwrap();
+        let c = rusqlite::Connection::open(&second).unwrap();
+        match conflict {
+            "path" => {let other=f.file.with_file_name("unrelated.jsonl");fs::copy(&f.file,&other).unwrap();c.execute("UPDATE threads SET rollout_path=?1",[other.to_string_lossy().as_ref()]).unwrap();},
+            "archive" => {c.execute("UPDATE threads SET archived=1",[]).unwrap();},
+            _ => c.execute_batch("CREATE TABLE duplicate AS SELECT * FROM threads; DROP TABLE threads; ALTER TABLE duplicate RENAME TO threads; INSERT INTO threads SELECT * FROM threads;").unwrap(),
+        }
+        drop(c);
+        let before = [
+            fs::read(&f.file).unwrap(),
+            fs::read(&first).unwrap(),
+            fs::read(&second).unwrap(),
+        ];
+        let host = FakeHost {
+            stops: AtomicUsize::new(0),
+            starts: AtomicUsize::new(0),
+            fail: false,
+        };
+        let error = service::switch(
+            &f.store,
+            &api("b"),
+            &host,
+            &CancellationToken::new(),
+            |_| {},
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("扫描存在异常"));
+        assert_eq!(
+            [
+                fs::read(&f.file).unwrap(),
+                fs::read(&first).unwrap(),
+                fs::read(&second).unwrap()
+            ],
+            before
+        );
+        assert!(!f.settings.codex_home.join("config.toml").exists());
+    }
+}
+
+#[test]
+#[cfg(windows)]
+fn duplicate_indexes_directory_alias_is_scanned_once() {
+    let mut f = fixture();
+    let path = db(&f);
+    f.settings.sqlite_home = Some(PathBuf::from(
+        normalize(&f.settings.codex_home)
+            .unwrap()
+            .to_string_lossy()
+            .to_uppercase(),
+    ));
+    assert_eq!(databases(&f.settings).unwrap().len(), 1);
+    assert_eq!(scan(&f).len(), 1);
+    assert_eq!(
+        normalize(&path).unwrap(),
+        databases(&f.settings).unwrap()[0]
+    );
+}
+
+#[test]
+fn duplicate_indexes_keep_unique_parent_child_relations() {
+    let f = fixture();
+    let first = db(&f);
+    let second = f.settings.codex_home.join("state_6.sqlite");
+    let c = rusqlite::Connection::open(&first).unwrap();
+    c.execute(
+        "INSERT INTO thread_spawn_edges VALUES(?1,'child-one')",
+        [&f.id],
+    )
+    .unwrap();
+    drop(c);
+    fs::copy(&first, &second).unwrap();
+    let c = rusqlite::Connection::open(&second).unwrap();
+    c.execute(
+        "INSERT INTO thread_spawn_edges VALUES(?1,'child-two')",
+        [&f.id],
+    )
+    .unwrap();
+    drop(c);
+    let result = detail(&scan(&f)[0], 10000).unwrap();
+    assert_eq!(result.relations.len(), 2);
+    assert!(result.relations.iter().any(|v| v["child"] == "child-one"));
+    assert!(result.relations.iter().any(|v| v["child"] == "child-two"));
+}
+
+#[test]
+fn duplicate_indexes_changed_after_scan_are_not_written() {
+    let f = fixture();
+    let first = db(&f);
+    let second = f.settings.codex_home.join("state_6.sqlite");
+    fs::copy(&first, &second).unwrap();
+    let rows = scan(&f);
+    let other = f.file.with_file_name("external.jsonl");
+    fs::copy(&f.file, &other).unwrap();
+    let c = rusqlite::Connection::open(&second).unwrap();
+    c.execute(
+        "UPDATE threads SET rollout_path=?1",
+        [other.to_string_lossy().as_ref()],
+    )
+    .unwrap();
+    drop(c);
+    let paths = [&f.file, &first, &second, &other];
+    let before: Vec<_> = paths.iter().map(|p| fs::read(p).unwrap()).collect();
+    let mut j = Journal::new(&f.store.root, "external").unwrap();
+    let error = stage_changes(
+        &mut j,
+        &f.settings,
+        &rows,
+        "provider",
+        Some("b"),
+        &CancellationToken::new(),
+    )
+    .unwrap_err();
+    assert!(error.to_string().contains("扫描后线程索引发生变化"));
+    for (path, bytes) in paths.iter().zip(before) {
+        assert_eq!(fs::read(path).unwrap(), bytes);
+    }
+}
+#[test]
 fn config_preserves_unrelated_fields() {
     let p = api("b");
     let text =

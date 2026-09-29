@@ -157,6 +157,7 @@ fn export_rejects_malicious_thread_id() {
         updated: 0,
         archived: false,
         database: None,
+        related_databases: vec![],
         related_paths: vec![],
     };
     assert!(sessions::export(&s, t.path()).is_err());
