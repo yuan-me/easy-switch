@@ -11,3 +11,7 @@ export type UpdateStatus={state:'idle'|'checking'|'current'|'available'|'downloa
 export const modes:Record<Mode,string>={Official:'官方登录',Mixed:'混入 API',Api:'纯 API',Aggregate:'聚合路由'};
 export const strategies={Failover:'故障转移',Session:'按会话分配',RoundRobin:'按请求轮转',Weighted:'按权重分配'};
 export const blankProvider=():Provider=>({id:'p_'+crypto.randomUUID().replaceAll('-','').slice(0,12),name:'',mode:'Api',protocol:'Responses',baseUrl:'',model:'',contextWindow:null,compactLimit:null,strategy:'Failover',members:[],imageCompatibility:false,headers:{}});
+
+export type UsageCounts={input:number;output:number;cached:number|null};
+export type UsageShare=UsageCounts&{id:string;name:string};
+export type UsageReport=UsageCounts&{buckets:(UsageCounts&{start:number})[];models:UsageShare[];sessions:UsageShare[];availableModels:string[];warnings:string[];scannedFiles:number};

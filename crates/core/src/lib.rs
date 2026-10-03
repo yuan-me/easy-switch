@@ -9,6 +9,7 @@ pub mod protocol;
 pub mod runtime;
 pub mod service;
 pub mod sessions;
+pub mod usage;
 pub mod store;
 pub use model::*;
 pub use store::Store;

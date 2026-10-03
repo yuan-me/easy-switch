@@ -4,13 +4,13 @@
 
 Windows x64 的 Codex 供应商与会话管理工具，使用 Tauri 2、Rust、React/TypeScript。
 
-**[下载 v1.0.4 安装包](https://github.com/yuan-me/easy-switch/releases/download/v1.0.4/Easy.Switch_1.0.4_x64-setup.exe)** · [最新正式版](https://github.com/yuan-me/easy-switch/releases/latest) · [更新记录](CHANGELOG.md)
+**[下载 v1.1.0 安装包](https://github.com/yuan-me/easy-switch/releases/download/v1.1.0/Easy.Switch_1.1.0_x64-setup.exe)** · [最新正式版](https://github.com/yuan-me/easy-switch/releases/latest) · [更新记录](CHANGELOG.md)
 
-v1.0.4 修复切换 API 时“分页历史偏移未对齐事件边界”，正确区分同一会话的不同历史文件，并保留 v1.0.3 的重复索引修复。无需手动删除会话或数据库。
+v1.1.0 带来全窗云母与统一标题栏、紧凑会话界面、日／周／月 Token 统计，以及 10 秒自动消失的普通通知。保留此前分页历史偏移与重复索引修复。
 
 ## 安装与使用
 
-1. 下载并运行 `Easy.Switch_1.0.4_x64-setup.exe`，安装到当前 Windows 用户。缺少 WebView2 时，安装器会联网下载其引导程序。
+1. 下载并运行 `Easy.Switch_1.1.0_x64-setup.exe`，安装到当前 Windows 用户。缺少 WebView2 时，安装器会联网下载其引导程序。
 2. 打开 Easy Switch，在“设置”中确认 Codex 数据目录和桌面程序路径。
 3. 在“供应商”中添加配置并切换。使用 Sub2API 图片能力时，选择 Responses 协议并开启“Sub2API 图片工具兼容”，完整重启 Codex 后在新会话验证。
 
@@ -22,7 +22,8 @@ v1.0.4 修复切换 API 时“分页历史偏移未对齐事件边界”，正�
 - Sub2API 图片工具兼容开关。使用 `requires_openai_auth=false` 和指定 actor header，保留功能开关；不添加 `image_generation` 配置项。客户端工具注册和实际出图分别验收。
 - 会话搜索、分页、预览、Token 统计、Markdown 导出、归档恢复、Provider 修复、项目关联迁移及可恢复删除。
 - 当前 Windows 用户的 DPAPI 凭证与备份加密；提交日志、摘要校验、外部修改与 SQLite WAL 保护。关闭 Easy Switch 窗口不终止仍在服务的独立 Runtime。
-- 系统/浅色/深色主题；供应商编辑抽屉、会话分栏、窗口尺寸与阅读位置保存。
+- 系统/浅色/深色主题、Windows 11 云母与统一标题栏；紧凑会话分栏、窗口尺寸与阅读位置保存；普通提示 10 秒自动关闭。
+- 日／周／月 Token 用量、模型筛选和会话排行；统计只读本地历史，异常或缺失记录明确提示。
 - GitHub Releases 签名更新，支持自动下载和手动检查。
 
 ## 自动更新
@@ -32,6 +33,8 @@ v1.0.4 修复切换 API 时“分页历史偏移未对齐事件边界”，正�
 安装前要求 Codex 已正常退出、代理无活动请求且无会话修改操作。下载失败可重试，签名或版本校验失败时拒绝安装；配置和会话存放在独立数据目录。需要回退时，可从 Releases 重新安装上一版本。
 
 ## 已验证与当前边界
+
+- v1.1.0：102 项 Rust 测试、4 组界面测试、本机及 Windows 11 虚拟机隔离原生验收通过，覆盖统计、主题、窗口操作、最低窗口与通知计时。VM 使用合成数据，系统缩放 150%；本轮未重新验证安装覆盖或自动更新。
 
 - Windows 11 虚拟机：Sub2API 新会话实际出图、官方/API 往返切换、分页历史元数据扩容及覆盖安装。
 - GitHub 真实更新：测试版 `test.1 → test.2` 自动下载、签名校验、确认安装、自动重启及旧包重装；配置、DPAPI 凭证、会话和阅读位置保留。正式版更新地址也已验证。

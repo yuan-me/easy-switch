@@ -51,7 +51,12 @@ fn main() {
             }
         }))
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_window_state::Builder::default().build())
+        .plugin(
+            tauri_plugin_window_state::Builder::default()
+                // Old versions saved native decorations; the new titlebar owns the caption.
+                .with_state_flags(tauri_plugin_window_state::StateFlags::all() - tauri_plugin_window_state::StateFlags::DECORATIONS)
+                .build(),
+        )
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(state)
         .manage(updates::UpdateState::default())
@@ -65,6 +70,7 @@ fn main() {
             commands::batch_sessions,
             commands::scan_sessions,
             commands::session_detail,
+            commands::usage_report,
             commands::export_sessions,
             commands::open_thread,
             commands::doctor,

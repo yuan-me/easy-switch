@@ -21,6 +21,7 @@ pub struct AppState {
     pub busy: Arc<AtomicBool>,
     pub cancel: Mutex<CancellationToken>,
     scanner: Arc<Mutex<core::sessions::Scanner>>,
+    usage: Arc<Mutex<core::usage::UsageCache>>,
     migration_error: Option<String>,
 }
 impl AppState {
@@ -30,6 +31,7 @@ impl AppState {
             busy: Arc::new(AtomicBool::new(false)),
             cancel: Mutex::new(CancellationToken::new()),
             scanner: Arc::new(Mutex::new(Default::default())),
+            usage: Arc::new(Mutex::new(Default::default())),
             migration_error,
         }
     }
@@ -393,4 +395,14 @@ pub fn save_scroll(state: State<AppState>, id: String, position: f64) -> Reply<(
     let mut settings = state.store.settings().map_err(err)?;
     settings.scroll_positions.insert(id, position);
     state.store.save("settings.json", &settings).map_err(err)
+}
+
+#[tauri::command]
+pub async fn usage_report(state: State<'_, AppState>, query: core::usage::Query) -> Reply<core::usage::Report> {
+    let settings = state.store.settings().map_err(err)?;
+    let scanner = state.scanner.clone();
+    let usage = state.usage.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        usage.lock().unwrap().report(&mut scanner.lock().unwrap(), &settings, query)
+    }).await.map_err(|e| e.to_string())?.map_err(err)
 }
