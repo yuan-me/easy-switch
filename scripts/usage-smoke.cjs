@@ -83,7 +83,7 @@ $bitmap.Save($Output,[Drawing.Imaging.ImageFormat]::Png);$graphics.Dispose();$bi
   for(let n=0;n<100;n++){try{browser=await chromium.connectOverCDP('http://127.0.0.1:'+port);break}catch{await wait(300)}}
   assert.ok(browser,'Native WebView2 did not start');const page=browser.contexts()[0].pages()[0];page.on('pageerror',e=>report.errors.push(e.message));await page.waitForSelector('h1');
   const invoke=(command,args={})=>page.evaluate(({command,args})=>window.__TAURI_INTERNALS__.invoke(command,args),{command,args});
-  const boot=await invoke('bootstrap');assert.equal(boot.version,'1.1.1');assert.equal(boot.settings.codexHome,home);report.version=boot.version;
+  const boot=await invoke('bootstrap');assert.equal(boot.version,'1.1.2');assert.equal(boot.settings.codexHome,home);report.version=boot.version;
   const starts=Array.from({length:7},(_,i)=>{const d=new Date(monday);d.setDate(d.getDate()+i);return d.getTime()/1000}),end=new Date(monday);end.setDate(end.getDate()+7);
   const data=await invoke('usage_report',{query:{bucketStarts:starts,end:end.getTime()/1000,model:null}});
   assert.equal(data.input,expectedInput);assert.equal(data.output,expectedInput/3);assert.equal(data.cached,expectedInput*.6);assert.equal(data.warnings.length,0);assert.equal(data.scannedFiles,12);

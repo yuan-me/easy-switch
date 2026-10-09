@@ -345,12 +345,23 @@ impl Scanner {
                         }
                     }
                     let mut item = None;
-                    for line in BufReader::new(File::open(&path)?).lines().take(40) {
+                    let mut metadata = None;
+                    for (ordinal, line) in BufReader::new(File::open(&path)?)
+                        .lines()
+                        .take(40)
+                        .enumerate()
+                    {
                         let line = line?;
                         let v: Value = serde_json::from_str(line.trim_start_matches('\u{feff}'))?;
                         let p = &v["payload"];
                         if v["type"] == "session_meta" {
-                            ensure!(item.is_none(), "元数据重复");
+                            if let Some(owner) = &metadata {
+                                ensure!(
+                                    crate::history::inherited_metadata(owner, &v, ordinal as u64),
+                                    "会话元数据重复且无法确认继承关系"
+                                );
+                                continue;
+                            }
                             let id = s(p, "id");
                             ensure!(!id.is_empty(), "线程 ID 缺失");
                             item = Some(Session {
@@ -366,6 +377,7 @@ impl Scanner {
                                 related_databases: vec![],
                                 related_paths: vec![],
                             });
+                            metadata = Some(v.clone());
                         }
                         if v["type"] == "event_msg" && p["type"] == "user_message" {
                             if let Some(item) = item.as_mut() {
@@ -538,7 +550,8 @@ pub fn patch_metadata(source: &Path, dest: &Path, key: &str, value: &str) -> Res
     let mut input = BufReader::new(File::open(source)?);
     let mut output = File::create(dest)?;
     let mut line = vec![];
-    let mut found = false;
+    let mut metadata = None;
+    let mut ordinal = 0;
     let mut first = true;
     loop {
         line.clear();
@@ -559,11 +572,22 @@ pub fn patch_metadata(source: &Path, dest: &Path, key: &str, value: &str) -> Res
         if end > start {
             let mut node: Value = serde_json::from_slice(&line[start..end])?;
             if node["type"] == "session_meta" {
+                if let Some(owner) = &metadata {
+                    ensure!(
+                        crate::history::inherited_metadata(owner, &node, ordinal),
+                        "会话元数据重复且无法确认继承关系，未修改"
+                    );
+                    output.write_all(&line)?;
+                    ordinal += 1;
+                    continue;
+                }
                 ensure!(
-                    !found && node["payload"]["id"].is_string(),
-                    "会话元数据不完整或重复"
+                    node["payload"]["id"]
+                        .as_str()
+                        .is_some_and(|id| !id.is_empty()),
+                    "会话元数据身份缺失"
                 );
-                found = true;
+                metadata = Some(node.clone());
                 if node["payload"][key] != value {
                     node["payload"][key] = json!(value);
                     output.write_all(&line[..start])?;
@@ -580,13 +604,15 @@ pub fn patch_metadata(source: &Path, dest: &Path, key: &str, value: &str) -> Res
                         output.write_all(&replacement)?;
                     }
                     output.write_all(&line[end..])?;
+                    ordinal += 1;
                     continue;
                 }
             }
+            ordinal += 1;
         }
         output.write_all(&line)?;
     }
-    ensure!(found, "缺少 session_meta");
+    ensure!(metadata.is_some(), "缺少 session_meta");
     output.sync_all()?;
     Ok(())
 }

@@ -125,6 +125,23 @@ pub fn same_paginated_thread(a: &Path, b: &Path) -> Result<bool> {
         && rollout_id(b).is_some()
         && rollout_id(a) != rollout_id(b))
 }
+
+pub(crate) fn inherited_metadata(owner: &Value, row: &Value, ordinal: u64) -> bool {
+    let owner = &owner["payload"];
+    let row = &row["payload"];
+    let Some(id) = row["id"].as_str().filter(|id| !id.is_empty()) else {
+        return false;
+    };
+    // Subagents can copy the parent's metadata inside their inherited history prefix.
+    owner["id"].as_str().is_some_and(|own| own != id)
+        && owner["forked_from_id"].as_str() == Some(id)
+        && owner["session_id"].as_str().is_some_and(|session| {
+            !session.is_empty() && row["session_id"].as_str() == Some(session)
+        })
+        && owner["subagent_history_start_ordinal"]
+            .as_u64()
+            .is_some_and(|end| ordinal > 0 && ordinal < end)
+}
 pub fn ensure_unreferenced(settings: &Settings, deleting: &[PathBuf]) -> Result<()> {
     let deleting = deleting
         .iter()
@@ -421,6 +438,7 @@ pub fn stage_metadata(
             let mut input = BufReader::new(File::open(&m.path)?);
             let mut output = File::create(&temp)?;
             let mut offset = 0;
+            let mut ordinal = 0;
             let mut found = false;
             let mut line = vec![];
             loop {
@@ -442,15 +460,24 @@ pub fn stage_metadata(
                 let text = std::str::from_utf8(&line)?.trim_start_matches('\u{feff}');
                 let row: Value = serde_json::from_str(text)?;
                 if row["type"] == "session_meta" {
-                    ensure!(
-                        !found && offset == m.start && line == m.raw,
-                        "会话元数据重复或已被外部修改"
-                    );
-                    found = true;
-                    output.write_all(&bytes)?;
+                    if !found {
+                        ensure!(
+                            offset == m.start && line == m.raw,
+                            "会话元数据已被外部修改，请关闭 Codex 后重试"
+                        );
+                        found = true;
+                        output.write_all(&bytes)?;
+                    } else {
+                        ensure!(
+                            inherited_metadata(&m.node, &row, ordinal),
+                            "会话元数据重复且无法确认继承关系，未修改"
+                        );
+                        output.write_all(&line)?;
+                    }
                 } else {
                     output.write_all(&line)?;
                 }
+                ordinal += 1;
                 offset += len as u64;
             }
             ensure!(found, "会话元数据已消失");
@@ -472,7 +499,12 @@ pub fn stage_metadata(
             Ok(())
         })();
         let _ = std::fs::remove_file(temp);
-        result?;
+        result.map_err(|e| {
+            anyhow::anyhow!(
+                "修复会话失败（{}）：{e}",
+                m.path.file_name().unwrap_or_default().to_string_lossy()
+            )
+        })?;
     }
     progress(crate::Progress::new(
         "修复会话",

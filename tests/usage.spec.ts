@@ -6,7 +6,7 @@ test('usage periods, model filtering, session navigation and timed notifications
   Object.assign(window,{isTauri:true,__TAURI_EVENT_PLUGIN_INTERNALS__:{unregisterListener:()=>{}},__TAURI_INTERNALS__:{
    metadata:{currentWindow:{label:'main'},currentWebview:{label:'main'}},transformCallback:()=>1,
    invoke:async(command:string,args:any)=>{
-    if(command==='bootstrap')return {providers:[],settings:{theme:'light',scrollPositions:{}},version:'1.1.1',migrationError:null};
+    if(command==='bootstrap')return {providers:[],settings:{theme:'light',scrollPositions:{}},version:'1.1.2',migrationError:null};
     if(command==='scan_sessions')return {sessions,warnings:[]};
     if(command==='session_detail')return {messages:Array.from({length:12},(_,i)=>({role:i%2?'assistant':'user',text:'这是合成会话内容，用于验证紧凑布局与阅读位置。'.repeat(3),time:'2026-10-03T12:00:00+08:00'})),tokens:[],relations:[],hasEncryptedContent:false,truncated:false};
     if(command==='usage_report'){

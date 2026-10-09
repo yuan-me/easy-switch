@@ -14,13 +14,13 @@ async function desktop(page:Page,mica:boolean|'error'=false){
    invoke:async(command:string,args:any)=>{
     w.calls.push(command);
     if(command==='plugin:event|listen'){listeners.set(args.event,callbacks.get(args.handler)!);return args.handler}
-    if(command==='bootstrap')return {providers:[{id:'official',name:'OpenAI 官方',mode:'Official',model:'',members:[],baseUrl:'',headers:{}}],settings,version:'1.1.1',migrationError:null};
+    if(command==='bootstrap')return {providers:[{id:'official',name:'OpenAI 官方',mode:'Official',model:'',members:[],baseUrl:'',headers:{}}],settings,version:'1.1.2',migrationError:null};
     if(command==='window_appearance'){w.appearance=args;if(mica==='error')throw new Error('appearance unavailable');return mica}
     if(command==='save_settings'){Object.assign(settings,args.settings);return}
     if(command==='plugin:window|is_maximized')return false;
     if(command==='switch_provider')return new Promise((resolve,reject)=>{w.finish=()=>resolve('Codex 已启动');w.fail=()=>reject('模拟修复失败，原始文件未修改')});
     if(command==='cancel_operation'){w.fail();return}
-    if(command==='list_operations')return [];
+    if(command==='list_operations')return [{id:'preview-backup',description:'切换供应商：OpenAI 官方',state:'Complete',fileCount:77,legacy:false}];
     return null;
    }
   }});
@@ -71,10 +71,14 @@ test('appearance errors retain the opaque fallback',async({page})=>{
 test('switch progress, elapsed time, safe commit, completion and cancellation',async({page})=>{
  const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
  await page.clock.install();await desktop(page);
+ await page.emulateMedia({colorScheme:'light'});
+ await page.getByLabel('跟随系统',{exact:true}).click();
  const begin=async()=>{await page.getByRole('button',{name:'切换',exact:true}).click();await page.getByRole('button',{name:'切换并重启',exact:true}).click();await expect(page.locator('.operation-progress')).toBeVisible()};
  const emit=async(stage:string,detail:string,completed=0,total:number|null=null,cancellable=true)=>page.evaluate(p=>(window as any).emitProgress(p),{stage,detail,completed,total,cancellable});
  await begin();
  await emit('扫描会话','已发现 77 个会话文件',77);
+ await expect(page.locator('.progress-detail')).toHaveText('已发现 77 个会话文件');
+ await page.clock.runFor(100);
  await expect(page.locator('progress')).not.toHaveAttribute('value');
  await page.clock.fastForward(16000);
  await expect(page.locator('.progress-meta')).toContainText('已用 16 秒');
@@ -85,15 +89,31 @@ test('switch progress, elapsed time, safe commit, completion and cancellation',a
  await expect(page.locator('progress')).toHaveAttribute('max','77');
  await page.getByRole('button',{name:'备份恢复',exact:true}).click();
  await page.clock.runFor(300);
+ await expect(page.locator('.operation-progress')).toHaveCSS('background-color','rgba(255, 255, 255, 0.8)');
+ await expect(page.locator('.operation-progress')).toHaveCSS('box-shadow','none');
  await page.screenshot({animations:'disabled',path:join(tmpdir(),'easy-switch-progress-light.png')});
  await page.setViewportSize({width:940,height:620});
  await expect(page.locator('.operation-progress')).toBeInViewport();
+ const panel=await page.locator('.operation-progress').boundingBox(),list=await page.locator('.operation-list').boundingBox();
+ expect(panel?.x).toBe(list?.x);
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
  await page.screenshot({animations:'disabled',path:join(tmpdir(),'easy-switch-progress-minimum.png')});
+ await page.emulateMedia({colorScheme:'dark'});
+ await expect(page.locator('.operation-progress')).toHaveCSS('background-color','rgba(31, 39, 52, 0.88)');
+ await page.getByRole('button',{name:'取消',exact:true}).focus();
+ await page.keyboard.press('Shift+Tab');
+ await page.keyboard.press('Tab');
+ await expect(page.getByRole('button',{name:'取消',exact:true})).toHaveCSS('outline-style','solid');
+ await page.screenshot({animations:'disabled',path:join(tmpdir(),'easy-switch-progress-dark-minimum.png')});
+ await page.setViewportSize({width:1280,height:900});
+ await page.screenshot({animations:'disabled',path:join(tmpdir(),'easy-switch-progress-dark.png')});
  await emit('提交与校验','写入并校验文件（此阶段不可取消）',150,154,false);
  await expect(page.getByRole('button',{name:'请稍候',exact:true})).toBeDisabled();
  await emit('重新启动','等待代理与 Codex 窗口启动',0,null,false);
  await expect(page.locator('progress')).not.toHaveAttribute('value');
+ await page.emulateMedia({reducedMotion:'reduce'});
+ await expect(page.locator('.operation-progress .spin')).toHaveCSS('animation-name','none');
+ await page.screenshot({animations:'disabled',path:join(tmpdir(),'easy-switch-progress-waiting.png')});
  await page.evaluate(()=>(window as any).finish());
  await expect(page.locator('.operation-progress')).toHaveCount(0);
  await expect(page.locator('.notice')).toContainText('切换成功');

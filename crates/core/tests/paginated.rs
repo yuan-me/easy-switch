@@ -530,3 +530,198 @@ fn unknown_projection_column_refuses_before_commit() {
     );
     assert_eq!(fs::read(&a).unwrap(), before);
 }
+
+fn inherited_metadata_fixture(indexed: bool) -> (tempfile::TempDir, Settings, String, PathBuf) {
+    let (t, s, parent, a, _) = fixture();
+    let id = uuid::Uuid::new_v4().to_string();
+    let path = a
+        .parent()
+        .unwrap()
+        .join(format!("rollout-2026-09-29T00-00-02-{id}.jsonl"));
+    let inherited = fs::read_to_string(&a).unwrap();
+    let mut meta: serde_json::Value =
+        serde_json::from_str(inherited.lines().next().unwrap()).unwrap();
+    meta["payload"]["id"] = id.clone().into();
+    meta["payload"]["forked_from_id"] = parent.clone().into();
+    meta["payload"]["parent_thread_id"] = parent.into();
+    meta["payload"]["subagent_history_start_ordinal"] = 3.into();
+    fs::write(&path, format!("{meta}\n{inherited}")).unwrap();
+    if indexed {
+        let db = rusqlite::Connection::open(s.codex_home.join("state.sqlite")).unwrap();
+        db.execute(
+            "INSERT INTO threads VALUES(?1,'child','C:/project','p_123456789012',?2,1,0)",
+            rusqlite::params![id, path.to_string_lossy()],
+        )
+        .unwrap();
+    }
+    (t, s, id, path)
+}
+
+#[test]
+fn inherited_parent_metadata_survives_repair_growth_and_restore() {
+    let (t, s, id, path) = inherited_metadata_fixture(true);
+    let before = fs::read(&path).unwrap();
+    let boundary = before.iter().position(|b| *b == b'\n').unwrap() + 1;
+    let projection = s.codex_home.join("thread_history_1.sqlite");
+    let db = rusqlite::Connection::open(&projection).unwrap();
+    db.execute_batch("CREATE TABLE thread_turns(thread_id TEXT,rollout_byte_offset INTEGER,rollout_end_byte_offset INTEGER)").unwrap();
+    db.execute(
+        "INSERT INTO thread_turns VALUES(?1,?2,?3)",
+        rusqlite::params![id, boundary, before.len()],
+    )
+    .unwrap();
+    drop(db);
+    let projection_before = fs::read(&projection).unwrap();
+    let store = t.path().join("store");
+    let mut j = Journal::new(&store, "inherited").unwrap();
+    sessions::stage_changes(
+        &mut j,
+        &s,
+        &selected(&s, &id),
+        "provider",
+        Some(&"provider".repeat(20)),
+        &CancellationToken::new(),
+    )
+    .unwrap();
+    j.commit().unwrap();
+    let after = fs::read(&path).unwrap();
+    let delta = after.len() - before.len();
+    assert!(delta > 0);
+    assert_eq!(after[boundary + delta..], before[boundary..]);
+    let db = rusqlite::Connection::open(&projection).unwrap();
+    let offsets: (usize, usize) = db
+        .query_row(
+            "SELECT rollout_byte_offset,rollout_end_byte_offset FROM thread_turns",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(offsets, (boundary + delta, after.len()));
+    drop(db);
+    assert_eq!(history::header(&path).unwrap().id, id);
+    let operation = j.dir.file_name().unwrap().to_str().unwrap().to_owned();
+    drop(j);
+    easy_switch_core::journal::restore(&store, &operation, &[s.codex_home.clone(), store.clone()])
+        .unwrap();
+    assert_eq!(fs::read(path).unwrap(), before);
+    assert_eq!(fs::read(projection).unwrap(), projection_before);
+}
+
+#[test]
+fn inherited_parent_metadata_is_recognized_without_database_index() {
+    let (_t, s, id, path) = inherited_metadata_fixture(false);
+    let rows = selected(&s, &id);
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].path, sessions::normalize(&path).unwrap());
+    assert_eq!(rows[0].title, "inherited");
+    assert_eq!(rows[0].provider, "p_123456789012");
+}
+
+#[test]
+fn inherited_parent_metadata_is_preserved_by_legacy_writer() {
+    let (t, _s, _, path) = inherited_metadata_fixture(false);
+    let text = fs::read_to_string(&path).unwrap();
+    let (first, rest) = text.split_once('\n').unwrap();
+    let mut meta: serde_json::Value = serde_json::from_str(first).unwrap();
+    meta["payload"]
+        .as_object_mut()
+        .unwrap()
+        .remove("history_mode");
+    fs::write(&path, format!("{meta}\n{rest}")).unwrap();
+    let before = fs::read(&path).unwrap();
+    let out = t.path().join("out");
+    sessions::patch_metadata(&path, &out, "model_provider", "openai").unwrap();
+    assert_eq!(body(&out), body(&path));
+    assert_eq!(fs::read(path).unwrap(), before);
+}
+
+#[test]
+fn unrelated_or_out_of_prefix_metadata_is_still_rejected() {
+    for invalid in [
+        "identity",
+        "unrelated",
+        "session",
+        "boundary",
+        "missing_boundary",
+    ] {
+        let (t, s, id, path) = inherited_metadata_fixture(true);
+        let text = fs::read_to_string(&path).unwrap();
+        let mut rows: Vec<serde_json::Value> = text
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect();
+        match invalid {
+            "identity" => rows[1]["payload"]["id"] = id.clone().into(),
+            "unrelated" => rows[1]["payload"]["id"] = uuid::Uuid::new_v4().to_string().into(),
+            "session" => rows[1]["payload"]["session_id"] = uuid::Uuid::new_v4().to_string().into(),
+            "boundary" => rows[0]["payload"]["subagent_history_start_ordinal"] = 1.into(),
+            _ => {
+                rows[0]["payload"]
+                    .as_object_mut()
+                    .unwrap()
+                    .remove("subagent_history_start_ordinal");
+            }
+        }
+        let before = rows
+            .iter()
+            .map(|row| format!("{row}\n"))
+            .collect::<String>();
+        fs::write(&path, &before).unwrap();
+        let mut j = Journal::new(&t.path().join("store"), "reject").unwrap();
+        assert!(
+            sessions::stage_changes(
+                &mut j,
+                &s,
+                &selected(&s, &id),
+                "provider",
+                Some("openai"),
+                &CancellationToken::new()
+            )
+            .is_err(),
+            "{invalid}"
+        );
+        assert!(
+            sessions::patch_metadata(&path, &t.path().join("out"), "model_provider", "openai")
+                .is_err(),
+            "{invalid}"
+        );
+        assert_eq!(fs::read_to_string(&path).unwrap(), before);
+        let db = rusqlite::Connection::open(s.codex_home.join("state.sqlite")).unwrap();
+        db.execute("DELETE FROM threads WHERE id=?1", [&id])
+            .unwrap();
+        let scan = sessions::Scanner::default()
+            .scan(&s, &CancellationToken::new())
+            .unwrap();
+        assert!(
+            scan.warnings.iter().any(|w| w.contains("无法确认继承关系")),
+            "{invalid}"
+        );
+    }
+}
+
+#[test]
+fn metadata_changed_after_scan_is_still_rejected() {
+    let (t, s, id, path) = inherited_metadata_fixture(true);
+    let mut j = Journal::new(&t.path().join("store"), "concurrent").unwrap();
+    let changed = std::cell::Cell::new(false);
+    let error = sessions::stage_changes_with_progress(
+        &mut j,
+        &s,
+        &selected(&s, &id),
+        "provider",
+        Some("openai"),
+        &CancellationToken::new(),
+        &|p| {
+            if p.detail == "备份并修复分页历史文件" && !changed.replace(true) {
+                let text =
+                    fs::read_to_string(&path)
+                        .unwrap()
+                        .replacen("C:/project", "D:/external", 1);
+                fs::write(&path, text).unwrap();
+            }
+        },
+    )
+    .unwrap_err();
+    assert!(format!("{error:#}").contains("外部修改"), "{error:#}");
+    assert!(fs::read_to_string(&path).unwrap().contains("D:/external"));
+}
