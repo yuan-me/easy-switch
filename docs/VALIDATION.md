@@ -1,12 +1,14 @@
 # 验证记录
 
-## 1.1.2 发布候选（2026-10-09）
+## 1.1.2 正式发布（2026-10-09）
 
 - 只读结构检查发现子代理继承前缀中包含父会话 `session_meta`；旧扫描器及两个修复入口均误拒绝。合成数据先复现原报错，再验证身份、共同 session_id、forked_from_id 和继承序号范围识别；当前元数据之外的字节保持原样。
 - 108 项 Rust 测试通过（71 回归、17 分页、10 加固、3 用量、2 HTTP、5 更新器）。新增测试覆盖无索引扫描、旧格式写入、分页扩容与 SQLite 偏移、精确恢复，以及重复自身身份、无关身份、会话不符、超出继承范围、缺少范围和扫描后外部修改的拒绝。
 - 8 项 Playwright 测试通过；百分比、等待、耗时、取消、提交禁止取消、系统主题变化、键盘焦点和减少动画通过。进度框使用页面主题色与细边框；1120×780、1280×900 和最小 940×620 检查浅深色、卡片对齐及无横向溢出。
-- Windows release EXE 构建及 11 项隔离原生检查通过，合成历史摘要不变、无 JavaScript 错误。报告在 `artifacts/repair-native-20261009/result.json`；本地未发布 EXE 的 SHA-256 为 `ac179757f164ae19762d082d0fd46629747e0aa2f546cc4e912a8ee602be76f4`，版本号暂沿用 1.1.1。
-- 本轮只读检查真实历史结构，写入与恢复仅用合成数据；没有操作真实供应商切换，也没有重新验证 Win10 真机或覆盖安装。版本已统一为 1.1.2，发布验证待完成。
+- Windows 1.1.2 release EXE 构建及 11 项隔离原生检查通过，合成历史摘要不变、无 JavaScript 错误。报告在 `artifacts/release-1.1.2/native/result.json`。
+- 正式标签 `v1.1.2` 指向 `0b8aadca49b14fd290483c4806e42711993f9bba`；[Check](https://github.com/yuan-me/easy-switch/actions/runs/37885608198) 与 [Release](https://github.com/yuan-me/easy-switch/actions/runs/37885608952) 均成功。云端安装包的更新签名、版本绑定、篡改拒绝及六尺寸图标通过。
+- [v1.1.2](https://github.com/yuan-me/easy-switch/releases/tag/v1.1.2) 已公开并设为最新正式版。匿名访问配置中的正式更新地址取得 1.1.2，两种 Windows 平台的 URL/签名与校验包一致；清单及完整安装包下载均为 HTTP 200，实际下载 4,936,583 字节，SHA-256 为 `01fe62c71903db9529afd3b868cd37e144f2575d8651a126c209d67be400980f`。证据在 `artifacts/release-1.1.2/public-verification.json`。
+- 本轮只读检查真实历史结构，写入与恢复仅用合成数据；没有操作真实供应商切换，也没有重新验证 Win10 真机、覆盖安装或自动更新安装。
 
 ## 1.1.1 修复版本（2026-10-09）
 
