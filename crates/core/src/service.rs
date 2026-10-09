@@ -3,10 +3,10 @@ use anyhow::{Context, ensure};
 use std::{fs, path::PathBuf};
 use tokio_util::sync::CancellationToken;
 
-fn report(f: &impl Fn(Progress), stage: &str, detail: &str) {
+fn report(f: &impl Fn(Progress), stage: &str, detail: &str, cancellable: bool) {
     f(Progress {
-        stage: stage.into(),
-        detail: detail.into(),
+        cancellable,
+        ..Progress::new(stage, detail, 0, None)
     });
 }
 pub fn switch(
@@ -16,6 +16,7 @@ pub fn switch(
     ct: &CancellationToken,
     progress: impl Fn(Progress),
 ) -> Result<String> {
+    report(&progress, "检查配置", "验证供应商与本地配置", true);
     let mut settings = store.settings()?;
     p.validate(&store.providers()?)?;
     if p.runtime() {
@@ -48,11 +49,10 @@ pub fn switch(
     )?;
     ensure!(!ct.is_cancelled(), "操作已取消");
     let mut j = Journal::new(&store.root, &format!("切换供应商：{}", p.name))?;
-    report(&progress, "退出 Codex", "等待目标桌面实例正常退出");
+    report(&progress, "退出 Codex", "等待目标桌面实例正常退出", true);
     host.stop()?;
     runtime::stop_blocking(store)?;
-    report(&progress, "备份与扫描", "验证活动、归档会话与数据库结构");
-    let scan = sessions::Scanner::default().scan(&settings, ct)?;
+    let scan = sessions::Scanner::default().scan_with_progress(&settings, ct, &progress)?;
     ensure!(
         scan.warnings.is_empty(),
         "扫描存在异常：{}",
@@ -73,25 +73,25 @@ pub fn switch(
         None
     };
     let new_auth = config::next_auth(store, &settings, p, auth.as_deref(), secret.as_deref())?;
+    report(&progress, "备份配置", "备份配置与登录信息", true);
     j.stage(&cfg, Some(next.as_bytes()))?;
     j.stage(&auth_path, new_auth.as_deref())?;
-    report(&progress, "修复会话", "保留对话正文与未知元数据");
-    sessions::stage_changes(
+    sessions::stage_changes_with_progress(
         &mut j,
         &settings,
         &scan.sessions,
         "provider",
         Some(p.provider_id()),
         ct,
+        &progress,
     )?;
     j.stage(
         &store.root.join("active-provider.json"),
         Some(&serde_json::to_vec(&p.id)?),
     )?;
     ensure!(!ct.is_cancelled(), "操作已取消");
-    report(&progress, "提交与校验", "提交期间不可取消；失败自动回滚");
-    j.commit()?;
-    report(&progress, "重新启动", "检查代理与 Codex 窗口");
+    j.commit_with_progress(&progress)?;
+    report(&progress, "重新启动", "等待代理与 Codex 窗口启动", false);
     if p.runtime() {
         runtime::ensure_started_blocking(store)?;
     }
@@ -118,10 +118,10 @@ pub fn batch(
         sessions::no_links(&destination)?;
     }
     let mut j = Journal::new(&store.root, &format!("会话操作：{action}"))?;
-    report(&progress, "退出 Codex", "确保会话没有其他写入者");
+    report(&progress, "退出 Codex", "确保会话没有其他写入者", true);
     host.stop()?;
     runtime::stop_blocking(store)?;
-    let scan = sessions::Scanner::default().scan(&settings, ct)?;
+    let scan = sessions::Scanner::default().scan_with_progress(&settings, ct, &progress)?;
     ensure!(scan.warnings.is_empty(), "扫描存在异常，未修改会话");
     let selected: Vec<_> = scan
         .sessions
@@ -129,10 +129,12 @@ pub fn batch(
         .filter(|s| ids.contains(&s.id))
         .collect();
     ensure!(selected.len() == ids.len(), "选择中存在重复或已消失会话");
-    sessions::stage_changes(&mut j, &settings, &selected, action, value, ct)?;
+    sessions::stage_changes_with_progress(
+        &mut j, &settings, &selected, action, value, ct, &progress,
+    )?;
     ensure!(!ct.is_cancelled(), "操作已取消");
-    report(&progress, "提交与校验", "保留完整批次备份");
-    j.commit()?;
+    j.commit_with_progress(&progress)?;
+    report(&progress, "重新启动", "等待代理与 Codex 窗口启动", false);
     let active = store
         .providers()?
         .into_iter()

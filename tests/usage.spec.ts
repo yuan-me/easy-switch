@@ -6,7 +6,7 @@ test('usage periods, model filtering, session navigation and timed notifications
   Object.assign(window,{isTauri:true,__TAURI_EVENT_PLUGIN_INTERNALS__:{unregisterListener:()=>{}},__TAURI_INTERNALS__:{
    metadata:{currentWindow:{label:'main'},currentWebview:{label:'main'}},transformCallback:()=>1,
    invoke:async(command:string,args:any)=>{
-    if(command==='bootstrap')return {providers:[],settings:{theme:'light',scrollPositions:{}},version:'1.1.0',migrationError:null};
+    if(command==='bootstrap')return {providers:[],settings:{theme:'light',scrollPositions:{}},version:'1.1.1',migrationError:null};
     if(command==='scan_sessions')return {sessions,warnings:[]};
     if(command==='session_detail')return {messages:Array.from({length:12},(_,i)=>({role:i%2?'assistant':'user',text:'这是合成会话内容，用于验证紧凑布局与阅读位置。'.repeat(3),time:'2026-10-03T12:00:00+08:00'})),tokens:[],relations:[],hasEncryptedContent:false,truncated:false};
     if(command==='usage_report'){
@@ -30,6 +30,7 @@ test('usage periods, model filtering, session navigation and timed notifications
  await page.getByRole('button',{name:'界面优化讨论',exact:true}).click();
  await expect(page.locator('.session-row')).toHaveCount(12);await expect(page.locator('.detail-heading h2')).toHaveText('界面优化讨论');
  await expect(page.locator('.detail-footer')).toBeInViewport();
+ await expect(page.locator('.message pre').first()).toHaveCSS('user-select','none');
  await page.getByRole('button',{name:'复制线程 ID',exact:true}).click();await expect(page.getByRole('status')).toContainText('线程 ID 已复制');
  await page.clock.fastForward(9000);await expect(page.getByRole('status')).toBeVisible();
  await page.getByRole('button',{name:'复制线程 ID',exact:true}).click();

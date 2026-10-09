@@ -1,4 +1,5 @@
 export type Mode='Official'|'Mixed'|'Api'|'Aggregate';
+export type Progress={stage:string;detail:string;completed:number;total:number|null;cancellable:boolean};
 export type Provider={id:string;name:string;mode:Mode;protocol:'Responses'|'ChatCompletions';baseUrl:string;model:string;contextWindow:number|null;compactLimit:number|null;strategy:'Failover'|'Session'|'RoundRobin'|'Weighted';members:{providerId:string;weight:number;enabled:boolean}[];imageCompatibility:boolean;headers:Record<string,string>;hasKey?:boolean};
 export type Settings={codexHome:string;sqliteHome:string|null;desktopExecutable:string;desktopAppId:string|null;activeProviderId:string|null;runtimePort:number;scrollPositions:Record<string,number>;enablePageRecovery:boolean;theme:'system'|'light'|'dark';automaticUpdates:boolean;automaticDownload:boolean};
 export type Bootstrap={providers:Provider[];settings:Settings;version:string;migrationError:string|null;busy:boolean};

@@ -1280,7 +1280,38 @@ fn switch_a_b_a_preserves_body_and_restarts() {
         fail: false,
     };
     for p in [&all[1], &all[0]] {
-        service::switch(&f.store, p, &h, &CancellationToken::new(), |_| {}).unwrap();
+        let events = std::cell::RefCell::new(Vec::new());
+        service::switch(&f.store, p, &h, &CancellationToken::new(), |p| {
+            events.borrow_mut().push(p)
+        })
+        .unwrap();
+        let events = events.into_inner();
+        for stage in [
+            "检查配置",
+            "退出 Codex",
+            "扫描会话",
+            "备份配置",
+            "修复会话",
+            "修复索引",
+            "提交与校验",
+            "重新启动",
+        ] {
+            assert!(events.iter().any(|p| p.stage == stage), "missing {stage}");
+        }
+        assert!(
+            events
+                .iter()
+                .all(|p| p.total.is_none_or(|n| p.completed <= n))
+        );
+        for stage in ["修复会话", "修复索引", "提交与校验"] {
+            assert!(events.iter().any(|p| p.stage == stage && p.total.is_some_and(|n| n > 0 && p.completed == n)));
+        }
+        assert!(
+            events
+                .iter()
+                .filter(|p| matches!(p.stage.as_str(), "提交与校验" | "重新启动"))
+                .all(|p| !p.cancellable)
+        );
         assert_eq!(scan(&f)[0].provider, p.id);
     }
     assert_eq!(h.starts.load(Ordering::SeqCst), 2);
@@ -1312,4 +1343,35 @@ fn cancellation_before_commit_keeps_original() {
     let mut j = Journal::new(&f.store.root, "cancel").unwrap();
     assert!(stage_changes(&mut j, &f.settings, &scan(&f), "provider", Some("b"), &ct).is_err());
     assert_eq!(fs::read(&f.file).unwrap(), before);
+}
+
+#[test]
+fn cancellation_from_progress_keeps_original_and_never_commits() {
+    let f = fixture();
+    let before = fs::read(&f.file).unwrap();
+    let p = api("b");
+    f.store.save("providers.json", &vec![p.clone()]).unwrap();
+    let host = FakeHost {
+        stops: AtomicUsize::new(0),
+        starts: AtomicUsize::new(0),
+        fail: false,
+    };
+    let ct = CancellationToken::new();
+    let error = service::switch(&f.store, &p, &host, &ct, |p| {
+        assert_ne!(p.stage, "提交与校验");
+        if p.stage == "修复会话" {
+            ct.cancel();
+        }
+    })
+    .unwrap_err();
+    assert!(error.to_string().contains("取消"));
+    assert_eq!(fs::read(&f.file).unwrap(), before);
+    assert!(!f.settings.codex_home.join("config.toml").exists());
+    assert_eq!(host.starts.load(Ordering::SeqCst), 0);
+    assert!(
+        list(&f.store.root.join("operations"), false)
+            .unwrap()
+            .iter()
+            .all(|o| o.state == "RolledBack")
+    );
 }

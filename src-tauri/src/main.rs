@@ -61,6 +61,7 @@ fn main() {
         .manage(state)
         .manage(updates::UpdateState::default())
         .invoke_handler(tauri::generate_handler![
+            commands::window_appearance,
             commands::bootstrap,
             commands::save_provider,
             commands::delete_provider,

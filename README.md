@@ -4,13 +4,13 @@
 
 Windows x64 的 Codex 供应商与会话管理工具，使用 Tauri 2、Rust、React/TypeScript。
 
-**[下载 v1.1.0 安装包](https://github.com/yuan-me/easy-switch/releases/download/v1.1.0/Easy.Switch_1.1.0_x64-setup.exe)** · [最新正式版](https://github.com/yuan-me/easy-switch/releases/latest) · [更新记录](CHANGELOG.md)
+**[下载 v1.1.1 安装包](https://github.com/yuan-me/easy-switch/releases/download/v1.1.1/Easy.Switch_1.1.1_x64-setup.exe)** · [最新正式版](https://github.com/yuan-me/easy-switch/releases/latest) · [更新记录](CHANGELOG.md)
 
-v1.1.0 带来全窗云母与统一标题栏、紧凑会话界面、日／周／月 Token 统计，以及 10 秒自动消失的普通通知。保留此前分页历史偏移与重复索引修复。
+v1.1.1 修复 Win10 窗口过度透明，增加供应商切换和会话处理的进度、数量与耗时，禁止页面文字拖选。保留 Win11 云母、Token 统计及此前会话修复。
 
 ## 安装与使用
 
-1. 下载并运行 `Easy.Switch_1.1.0_x64-setup.exe`，安装到当前 Windows 用户。缺少 WebView2 时，安装器会联网下载其引导程序。
+1. 下载并运行 `Easy.Switch_1.1.1_x64-setup.exe`，安装到当前 Windows 用户。缺少 WebView2 时，安装器会联网下载其引导程序。
 2. 打开 Easy Switch，在“设置”中确认 Codex 数据目录和桌面程序路径。
 3. 在“供应商”中添加配置并切换。使用 Sub2API 图片能力时，选择 Responses 协议并开启“Sub2API 图片工具兼容”，完整重启 Codex 后在新会话验证。
 
@@ -33,6 +33,8 @@ v1.1.0 带来全窗云母与统一标题栏、紧凑会话界面、日／周／�
 安装前要求 Codex 已正常退出、代理无活动请求且无会话修改操作。下载失败可重试，签名或版本校验失败时拒绝安装；配置和会话存放在独立数据目录。需要回退时，可从 Releases 重新安装上一版本。
 
 ## 已验证与当前边界
+
+- v1.1.1：103 项 Rust 测试、8 项界面测试及 Win11 隔离原生检查通过；Win10 已由用户实测确认正常。未重新执行安装覆盖和自动更新安装。
 
 - v1.1.0：102 项 Rust 测试、4 组界面测试、本机及 Windows 11 虚拟机隔离原生验收通过，覆盖统计、主题、窗口操作、最低窗口与通知计时。VM 使用合成数据，系统缩放 150%；本轮未重新验证安装覆盖或自动更新。
 

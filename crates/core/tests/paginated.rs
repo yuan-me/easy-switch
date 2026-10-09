@@ -85,16 +85,29 @@ fn paginated_repair_preserves_offsets_and_all_nonmetadata_bytes() {
         .sessions;
     let before = [fs::read(&a).unwrap(), fs::read(&b).unwrap()];
     let mut j = Journal::new(&t.path().join("store"), "repair").unwrap();
-    sessions::stage_changes(
+    let events = std::cell::RefCell::new(Vec::new());
+    sessions::stage_changes_with_progress(
         &mut j,
         &s,
         &rows,
         "provider",
         Some("openai"),
         &CancellationToken::new(),
+        &|p| events.borrow_mut().push(p),
     )
     .unwrap();
     j.commit().unwrap();
+    let events = events.into_inner();
+    assert!(
+        events
+            .iter()
+            .any(|p| p.detail == "备份并修复分页历史文件" && p.total == Some(2))
+    );
+    assert!(
+        events
+            .iter()
+            .any(|p| p.detail == "分页历史处理完成" && p.completed == 2 && p.total == Some(2))
+    );
     for (p, old) in [&a, &b].iter().zip(before) {
         let new = fs::read(p).unwrap();
         let offset = old.iter().position(|b| *b == b'\n').unwrap() + 1;

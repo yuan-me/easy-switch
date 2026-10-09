@@ -1,7 +1,7 @@
 import {useEffect,useState} from 'react';
 import {Minus,Square,Copy,X} from 'lucide-react';
-import {getCurrentWindow,Effect} from '@tauri-apps/api/window';
-import {preview} from './api';
+import {getCurrentWindow} from '@tauri-apps/api/window';
+import {call,preview} from './api';
 import {Brand} from './components';
 
 export function Titlebar({theme,onError}:{theme:'light'|'dark'|'system';onError:(text:string)=>void}) {
@@ -16,11 +16,11 @@ export function Titlebar({theme,onError}:{theme:'light'|'dark'|'system';onError:
  },[]);
  useEffect(()=>{
   if(preview)return;
-  const win=getCurrentWindow(),media=matchMedia('(prefers-color-scheme: dark)');
+  const media=matchMedia('(prefers-color-scheme: dark)');let disposed=false;
   const apply=async()=>{
-   try{await win.setTheme(theme==='system'?null:theme);await win.setEffects({effects:[Effect.Mica]});}catch(e){onError(String(e))}
+   try{const mica=await call<boolean>('window_appearance',{dark:theme==='dark'||(theme==='system'&&media.matches),system:theme==='system'});if(!disposed)document.documentElement.dataset.backdrop=mica?'mica':'solid';}catch(e){if(!disposed){document.documentElement.dataset.backdrop='solid';onError(String(e))}}
   };
-  void apply();media.addEventListener('change',apply);return()=>media.removeEventListener('change',apply);
+  void apply();media.addEventListener('change',apply);return()=>{disposed=true;media.removeEventListener('change',apply)};
  // onError is an event sink, not a theme dependency.
  // eslint-disable-next-line react-hooks/exhaustive-deps
  },[theme]);

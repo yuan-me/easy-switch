@@ -198,7 +198,25 @@ impl Journal {
         self.commit_with_fault(None)
     }
     pub fn commit_with_fault(&mut self, fail_after: Option<usize>) -> Result<()> {
-        for c in &self.manifest.files {
+        self.commit_observed(fail_after, &|_| {})
+    }
+    pub fn commit_with_progress(&mut self, progress: &impl Fn(crate::Progress)) -> Result<()> {
+        self.commit_observed(None, progress)
+    }
+    fn commit_observed(
+        &mut self,
+        fail_after: Option<usize>,
+        progress: &impl Fn(crate::Progress),
+    ) -> Result<()> {
+        let total = self.manifest.files.len() * 2;
+        let report = |detail: &str, completed, total| {
+            progress(crate::Progress {
+                cancellable: false,
+                ..crate::Progress::new("提交与校验", detail, completed, total)
+            })
+        };
+        for (i, c) in self.manifest.files.iter().enumerate() {
+            report("校验源文件与备份摘要（此阶段不可取消）", i, Some(total));
             ensure!(hash(&c.path)? == c.before_hash, "文件已被外部修改，未提交");
             check_wal(&c.path)?;
             verify_payload(c.stage.as_deref(), &c.after_hash, &self.dir)?;
@@ -207,6 +225,11 @@ impl Journal {
         self.save()?;
         let result = (|| {
             for (i, c) in self.manifest.files.iter().enumerate() {
+                report(
+                    "写入并校验文件（此阶段不可取消）",
+                    self.manifest.files.len() + i,
+                    Some(total),
+                );
                 ensure!(hash(&c.path)? == c.before_hash, "提交期间发现并发修改");
                 check_wal(&c.path)?;
                 replace(c.stage.as_deref(), &c.path)?;
@@ -218,13 +241,16 @@ impl Journal {
             Ok(())
         })();
         if let Err(e) = result {
+            report("提交失败，正在自动回滚，请勿关闭程序", 0, None);
             match self.rollback() {
                 Ok(()) => return Err(e),
                 Err(r) => return Err(anyhow::anyhow!("操作失败；回滚尚未完成：{r}")),
             }
         }
         self.manifest.state = "Complete".into();
-        self.save()
+        self.save()?;
+        report("提交与校验完成", total, Some(total));
+        Ok(())
     }
     pub fn rollback(&mut self) -> Result<()> {
         rollback_manifest(&self.dir, &mut self.manifest)?;

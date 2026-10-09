@@ -61,6 +61,32 @@ impl Drop for Busy {
     }
 }
 type Reply<T> = std::result::Result<T, String>;
+#[tauri::command]
+pub fn window_appearance(window: tauri::WebviewWindow, dark: bool, system: bool) -> Reply<bool> {
+    window
+        .set_theme(if system {
+            None
+        } else {
+            Some(if dark { tauri::Theme::Dark } else { tauri::Theme::Light })
+        })
+        .map_err(|e| e.to_string())?;
+    // Tauri's set_effects discards unsupported-platform errors; use the existing backend directly.
+    #[cfg(windows)]
+    let mica = window_vibrancy::apply_mica(&window, Some(dark)).is_ok();
+    #[cfg(not(windows))]
+    let mica = false;
+    let color = if mica {
+        tauri::window::Color(0, 0, 0, 0)
+    } else if dark {
+        tauri::window::Color(20, 28, 41, 255)
+    } else {
+        tauri::window::Color(242, 246, 252, 255)
+    };
+    window
+        .set_background_color(Some(color))
+        .map_err(|e| e.to_string())?;
+    Ok(mica)
+}
 pub fn err(e: anyhow::Error) -> String {
     core::runtime::safe_error(&e)
 }

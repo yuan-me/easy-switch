@@ -186,11 +186,32 @@ fn cancellation(ct: &CancellationToken) -> Result<()> {
 }
 impl Scanner {
     pub fn scan(&mut self, settings: &Settings, ct: &CancellationToken) -> Result<Scan> {
+        self.scan_with_progress(settings, ct, &|_| {})
+    }
+    pub fn scan_with_progress(
+        &mut self,
+        settings: &Settings,
+        ct: &CancellationToken,
+        progress: &impl Fn(crate::Progress),
+    ) -> Result<Scan> {
+        progress(crate::Progress::new(
+            "扫描会话",
+            "检查数据库与会话目录",
+            0,
+            None,
+        ));
         let mut out = Scan::default();
+        let mut scanned = 0;
         let mut indexed = HashSet::new();
         let mut ids: HashMap<String, usize> = HashMap::new();
         for path in databases(settings)? {
             cancellation(ct)?;
+            progress(crate::Progress::new(
+                "扫描会话",
+                "读取数据库索引",
+                scanned,
+                None,
+            ));
             let result = (|| -> Result<Vec<Session>> {
                 let c = open(&path)?;
                 let cols = columns(&c, "threads")?;
@@ -213,6 +234,7 @@ impl Scanner {
                 let mut rows = q.query([])?;
                 let mut items = vec![];
                 while let Some(r) = rows.next()? {
+                    cancellation(ct)?;
                     let p = owned(&PathBuf::from(r.get::<_, String>(4)?), settings)?;
                     let t: i64 = r.get(5)?;
                     items.push(Session {
@@ -302,6 +324,13 @@ impl Scanner {
                     continue;
                 }
                 let path = normalize(entry.path())?;
+                scanned += 1;
+                progress(crate::Progress::new(
+                    "扫描会话",
+                    &format!("已发现 {scanned} 个会话文件"),
+                    scanned,
+                    None,
+                ));
                 alive.insert(path.clone());
                 if indexed.contains(&path.to_string_lossy().to_lowercase()) {
                     continue;
@@ -607,6 +636,18 @@ pub fn stage_changes(
     value: Option<&str>,
     ct: &CancellationToken,
 ) -> Result<()> {
+    stage_changes_with_progress(j, settings, items, action, value, ct, &|_| {})
+}
+pub fn stage_changes_with_progress(
+    j: &mut Journal,
+    settings: &Settings,
+    items: &[Session],
+    action: &str,
+    value: Option<&str>,
+    ct: &CancellationToken,
+    progress: &impl Fn(crate::Progress),
+) -> Result<()> {
+    progress(crate::Progress::new("修复会话", "检查会话关联", 0, None));
     ensure!(
         matches!(
             action,
@@ -646,12 +687,19 @@ pub fn stage_changes(
             },
             value.context("缺少修改值")?,
             ct,
+            progress,
         )?
     } else {
         HashMap::new()
     };
-    for item in &expanded {
+    for (i, item) in expanded.iter().enumerate() {
         cancellation(ct)?;
+        progress(crate::Progress::new(
+            "修复会话",
+            "备份并处理会话文件",
+            i,
+            Some(expanded.len()),
+        ));
         let path = owned(&item.path, settings)?;
         ensure!(path.is_file(), "会话文件不存在");
         ensure!(
@@ -715,6 +763,13 @@ pub fn stage_changes(
             _ => unreachable!(),
         }
     }
+    progress(crate::Progress::new(
+        "修复会话",
+        "会话文件处理完成",
+        expanded.len(),
+        Some(expanded.len()),
+    ));
+    progress(crate::Progress::new("修复索引", "检查数据库结构", 0, None));
     let mut dbs = databases(settings)?
         .into_iter()
         .map(|path| {
@@ -724,8 +779,15 @@ pub fn stage_changes(
         .collect::<Result<Vec<_>>>()?;
     dbs.sort_by_key(|(_, threads)| !threads);
     let mut projects = HashMap::new();
-    for (database, _) in dbs {
+    let total = dbs.len();
+    for (i, (database, _)) in dbs.into_iter().enumerate() {
         cancellation(ct)?;
+        progress(crate::Progress::new(
+            "修复索引",
+            "备份并更新数据库与历史偏移",
+            i,
+            Some(total),
+        ));
         let c = open(&database)?;
         let thread_cols = columns(&c, "threads")?;
         let cat_cols = columns(&c, "local_thread_catalog")?;
@@ -859,6 +921,12 @@ pub fn stage_changes(
             Ok(())
         })?;
     }
+    progress(crate::Progress::new(
+        "修复索引",
+        "数据库处理完成",
+        total,
+        Some(total),
+    ));
     Ok(())
 }
 fn project_for(db: &Connection, path: &str) -> Result<Option<String>> {

@@ -326,6 +326,7 @@ pub fn stage_metadata(
     key: &str,
     value: &str,
     ct: &tokio_util::sync::CancellationToken,
+    progress: &impl Fn(crate::Progress),
 ) -> Result<std::collections::HashMap<String, OffsetShift>> {
     use std::io::Write;
     ensure!(
@@ -337,6 +338,13 @@ pub fn stage_metadata(
         .map(|s| path_key(&s.path))
         .collect::<Result<HashSet<_>>>()?;
     let mut nodes = vec![];
+    let mut scanned = 0;
+    progress(crate::Progress::new(
+        "修复会话",
+        "扫描分页历史关联",
+        0,
+        None,
+    ));
     for folder in ["sessions", "archived_sessions"] {
         let root = settings.codex_home.join(folder);
         if !root.exists() {
@@ -351,6 +359,13 @@ pub fn stage_metadata(
             }
             let path = sessions::owned(entry.path(), settings)?;
             let m = MetadataLine::read(path)?;
+            scanned += 1;
+            progress(crate::Progress::new(
+                "修复会话",
+                &format!("检查分页历史：已扫描 {scanned} 个文件"),
+                scanned,
+                None,
+            ));
             if m.node["payload"]["history_mode"] == "paginated" {
                 nodes.push(m);
             }
@@ -364,6 +379,12 @@ pub fn stage_metadata(
     let mut resolved = std::collections::HashMap::new();
     for i in 0..nodes.len() {
         ensure!(!ct.is_cancelled(), "操作已取消");
+        progress(crate::Progress::new(
+            "修复会话",
+            "校验分页历史引用与偏移",
+            i,
+            Some(nodes.len()),
+        ));
         resolve_metadata(
             i,
             &nodes,
@@ -378,6 +399,12 @@ pub fn stage_metadata(
     let mut shifts = std::collections::HashMap::new();
     for (i, m) in nodes.iter().enumerate() {
         ensure!(!ct.is_cancelled(), "操作已取消");
+        progress(crate::Progress::new(
+            "修复会话",
+            "备份并修复分页历史文件",
+            i,
+            Some(nodes.len()),
+        ));
         let (bytes, shift) = resolved.remove(&i).unwrap();
         if bytes == m.raw {
             continue;
@@ -447,6 +474,12 @@ pub fn stage_metadata(
         let _ = std::fs::remove_file(temp);
         result?;
     }
+    progress(crate::Progress::new(
+        "修复会话",
+        "分页历史处理完成",
+        nodes.len(),
+        Some(nodes.len()),
+    ));
     Ok(shifts)
 }
 

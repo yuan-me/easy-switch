@@ -241,4 +241,18 @@ pub struct Diagnostic {
 pub struct Progress {
     pub stage: String,
     pub detail: String,
+    pub completed: usize,
+    pub total: Option<usize>,
+    pub cancellable: bool,
+}
+impl Progress {
+    pub fn new(stage: &str, detail: &str, completed: usize, total: Option<usize>) -> Self {
+        Self {
+            stage: stage.into(),
+            detail: detail.into(),
+            completed,
+            total,
+            cancellable: true,
+        }
+    }
 }

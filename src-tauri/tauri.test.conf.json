@@ -13,12 +13,8 @@
         "center": true,
         "decorations": false,
         "transparent": true,
-        "backgroundColor": "#00000000",
-        "windowEffects": {
-          "effects": [
-            "mica"
-          ]
-        }
+        "backgroundColor": "#f2f6fc",
+        "shadow": true
       }
     ]
   },
