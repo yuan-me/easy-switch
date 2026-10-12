@@ -16,3 +16,7 @@ test-version.json
 .env*
 !.env.example
 *.log
+
+# Handoff documents stay local.
+docs/HANDOFF*.md
+.claude/handoffs/
