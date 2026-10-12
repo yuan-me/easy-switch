@@ -1,10 +1,16 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 mod commands;
+mod models;
 #[cfg(test)]
 mod updater_tests;
 mod updates;
 use easy_switch_core::Store;
 use tauri::Manager;
+const WINDOW_STATE_FLAGS: tauri_plugin_window_state::StateFlags =
+    tauri_plugin_window_state::StateFlags::all().difference(
+        tauri_plugin_window_state::StateFlags::DECORATIONS
+            .union(tauri_plugin_window_state::StateFlags::VISIBLE),
+    );
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     let root = args
@@ -44,6 +50,9 @@ fn main() {
     let state = commands::AppState::new(store, migration);
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _, _| {
+            if !app.state::<commands::AppState>().window_ready.load(std::sync::atomic::Ordering::SeqCst) {
+                return;
+            }
             if let Some(w) = app.get_webview_window("main") {
                 let _ = w.unminimize();
                 let _ = w.show();
@@ -53,8 +62,8 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(
             tauri_plugin_window_state::Builder::default()
-                // Old versions saved native decorations; the new titlebar owns the caption.
-                .with_state_flags(tauri_plugin_window_state::StateFlags::all() - tauri_plugin_window_state::StateFlags::DECORATIONS)
+                // Restore geometry while hidden; the styled frontend reveals the window.
+                .with_state_flags(WINDOW_STATE_FLAGS)
                 .build(),
         )
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -62,7 +71,9 @@ fn main() {
         .manage(updates::UpdateState::default())
         .invoke_handler(tauri::generate_handler![
             commands::window_appearance,
+            commands::window_ready,
             commands::bootstrap,
+            commands::reveal_provider_key,
             commands::save_provider,
             commands::delete_provider,
             commands::save_settings,
@@ -76,6 +87,8 @@ fn main() {
             commands::open_thread,
             commands::doctor,
             commands::fetch_models,
+            models::refresh_provider_models,
+            models::acknowledge_models,
             commands::cancel_operation,
             commands::list_operations,
             commands::restore_operation,
@@ -97,6 +110,7 @@ fn main() {
                 }
             });
             updates::schedule(app.handle().clone());
+            models::schedule(app.handle().clone());
             Ok(())
         })
         .on_window_event(|w, event| {
@@ -109,4 +123,18 @@ fn main() {
         })
         .run(tauri::generate_context!())
         .expect("无法启动 Easy Switch");
+}
+
+#[cfg(test)]
+mod startup_tests {
+    #[test]
+    fn restore_geometry_without_revealing_an_unpainted_window() {
+        use tauri_plugin_window_state::StateFlags;
+        assert!(!super::WINDOW_STATE_FLAGS.intersects(StateFlags::VISIBLE | StateFlags::DECORATIONS));
+        assert!(super::WINDOW_STATE_FLAGS.contains(StateFlags::SIZE | StateFlags::POSITION | StateFlags::MAXIMIZED));
+        for config in [include_str!("../tauri.conf.json"), include_str!("../tauri.test.conf.json")] {
+            let config: serde_json::Value = serde_json::from_str(config).unwrap();
+            assert_eq!(config["app"]["windows"][0]["visible"], false);
+        }
+    }
 }

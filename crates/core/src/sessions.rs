@@ -9,7 +9,7 @@ use serde_json::{Value, json};
 use std::{
     collections::{HashMap, HashSet},
     fs::{self, File},
-    io::{BufRead, BufReader, Write},
+    io::{BufRead, BufReader, BufWriter, Write},
     path::{Path, PathBuf},
     time::SystemTime,
 };
@@ -548,7 +548,7 @@ pub fn patch_metadata(source: &Path, dest: &Path, key: &str, value: &str) -> Res
         "不支持的元数据字段"
     );
     let mut input = BufReader::new(File::open(source)?);
-    let mut output = File::create(dest)?;
+    let mut output = BufWriter::with_capacity(64 * 1024, File::create(dest)?);
     let mut line = vec![];
     let mut metadata = None;
     let mut ordinal = 0;
@@ -613,7 +613,8 @@ pub fn patch_metadata(source: &Path, dest: &Path, key: &str, value: &str) -> Res
         output.write_all(&line)?;
     }
     ensure!(metadata.is_some(), "缺少 session_meta");
-    output.sync_all()?;
+    output.flush()?;
+    output.get_ref().sync_all()?;
     Ok(())
 }
 pub fn stage_database(
@@ -634,6 +635,10 @@ pub fn stage_database(
             let b = rusqlite::backup::Backup::new(&source, &mut copy)?;
             b.run_to_completion(128, std::time::Duration::from_millis(1), None)?;
         }
+        drop(copy);
+        // SQLite backup may change file headers even when no rows need repair.
+        let snapshot_before = journal::hash(&tmp)?;
+        let copy = Connection::open_with_flags(&tmp, OpenFlags::SQLITE_OPEN_READ_WRITE)?;
         copy.execute_batch("PRAGMA foreign_keys=ON; BEGIN IMMEDIATE")?;
         change(&copy)?;
         copy.execute_batch("COMMIT")?;
@@ -649,6 +654,9 @@ pub fn stage_database(
             !wal.exists() || fs::metadata(wal)?.len() == 0,
             "数据库出现并发 WAL"
         );
+        if journal::hash(&tmp)? == snapshot_before {
+            return Ok(());
+        }
         j.stage_file(path, &tmp)
     })();
     let _ = fs::remove_file(tmp);
@@ -728,13 +736,14 @@ pub fn stage_changes_with_progress(
         ));
         let path = owned(&item.path, settings)?;
         ensure!(path.is_file(), "会话文件不存在");
+        let header = crate::history::header(&path)?;
         ensure!(
-            crate::history::header(&path)?.id == item.id,
+            header.id == item.id,
             "线程索引与会话身份不一致，未修改"
         );
         match action {
             "provider" | "migrate" => {
-                if crate::history::header(&path)?.paginated {
+                if header.paginated {
                     continue;
                 }
                 let temp = j.dir.join(format!("{}.jsonl", uuid::Uuid::new_v4()));
@@ -840,10 +849,10 @@ pub fn stage_changes_with_progress(
                 )?;
             }
             for item in &selected {
-                let (rollout, archived): (String, i64) = db.query_row(
-                    "SELECT rollout_path,archived FROM threads WHERE id=?1",
+                let (rollout, archived, provider): (String, i64, Option<String>) = db.query_row(
+                    "SELECT rollout_path,archived,model_provider FROM threads WHERE id=?1",
                     [&item.id],
-                    |r| Ok((r.get(0)?, r.get(1)?)),
+                    |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
                 )?;
                 ensure!(
                     owned(Path::new(&rollout), settings)?
@@ -852,6 +861,11 @@ pub fn stage_changes_with_progress(
                         && (archived != 0) == item.archived,
                     "扫描后线程索引发生变化，未修改"
                 );
+                if action == "provider" && provider.as_deref() == value {
+                    let count: i64 = db.query_row("SELECT COUNT(*) FROM threads WHERE id=?1", [&item.id], |r| r.get(0))?;
+                    ensure!(count == 1, "线程索引不唯一或已消失");
+                    continue;
+                }
                 let affected = match action {
                     "provider" => db.execute(
                         "UPDATE threads SET model_provider=?1 WHERE id=?2",
@@ -912,12 +926,13 @@ pub fn stage_changes_with_progress(
                     &columns(db, "local_thread_catalog_hosts")?,
                     &["host_id", "host_kind"],
                 )?;
+                let mut catalog_changed = action != "provider";
                 for item in items {
                     const LOCAL: &str = "thread_id=?1 AND host_id IN (SELECT host_id FROM local_thread_catalog_hosts WHERE host_kind='local')";
                     match action {
                         "provider" => {
                             required(&cat_cols, &["model_provider"])?;
-                            db.execute(&format!("UPDATE local_thread_catalog SET model_provider=?2 WHERE {LOCAL}"),params![item.id,value])?;
+                            catalog_changed |= db.execute(&format!("UPDATE local_thread_catalog SET model_provider=?2 WHERE {LOCAL} AND model_provider IS NOT ?2"),params![item.id,value])? > 0;
                         }
                         "migrate" => {
                             required(&cat_cols, &["cwd", "project_id"])?;
@@ -932,7 +947,7 @@ pub fn stage_changes_with_progress(
                         _ => {}
                     }
                 }
-                if columns(db, "local_thread_catalog_metadata")?.contains("catalog_revision") {
+                if columns(db, "local_thread_catalog_metadata")?.contains("catalog_revision") && catalog_changed {
                     db.execute("UPDATE local_thread_catalog_metadata SET catalog_revision=catalog_revision+1",[])?;
                 }
                 let sync = columns(db, "local_thread_catalog_sync_state")?;
@@ -941,7 +956,9 @@ pub fn stage_changes_with_progress(
                         &sync,
                         &["host_id", "initial_build_complete", "watermark_updated_at"],
                     )?;
-                    db.execute("UPDATE local_thread_catalog_sync_state SET initial_build_complete=0,watermark_updated_at=0 WHERE host_id IN (SELECT host_id FROM local_thread_catalog_hosts WHERE host_kind='local')",[])?;
+                    if catalog_changed {
+                        db.execute("UPDATE local_thread_catalog_sync_state SET initial_build_complete=0,watermark_updated_at=0 WHERE host_id IN (SELECT host_id FROM local_thread_catalog_hosts WHERE host_kind='local')",[])?;
+                    }
                 }
             }
             Ok(())

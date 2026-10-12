@@ -6,7 +6,7 @@ use serde_json::Value;
 use std::{
     collections::HashSet,
     fs::File,
-    io::{BufRead, BufReader, Read},
+    io::{BufRead, BufReader, BufWriter, Read},
     path::{Path, PathBuf},
 };
 
@@ -237,17 +237,23 @@ pub struct OffsetShift {
     start: u64,
     end: u64,
     delta: u64,
+    source_boundaries: Option<(u64, Vec<u64>)>,
 }
 impl OffsetShift {
     fn translate(&self, offset: u64) -> Result<u64> {
         use std::io::{Seek, SeekFrom};
-        let mut file = File::open(&self.path)?;
-        ensure!(offset <= file.metadata()?.len(), "分页历史偏移超出文件末尾");
-        if offset > 0 {
-            file.seek(SeekFrom::Start(offset - 1))?;
-            let mut byte = [0];
-            file.read_exact(&mut byte)?;
-            ensure!(byte[0] == b'\n', "分页历史偏移未对齐事件边界");
+        if let Some((len, boundaries)) = &self.source_boundaries {
+            ensure!(offset <= *len, "分页历史偏移超出文件末尾");
+            ensure!(boundaries.binary_search(&offset).is_ok(), "分页历史偏移未对齐事件边界");
+        } else {
+            let mut file = File::open(&self.path)?;
+            ensure!(offset <= file.metadata()?.len(), "分页历史偏移超出文件末尾");
+            if offset > 0 {
+                file.seek(SeekFrom::Start(offset - 1))?;
+                let mut byte = [0];
+                file.read_exact(&mut byte)?;
+                ensure!(byte[0] == b'\n', "分页历史偏移未对齐事件边界");
+            }
         }
         ensure!(
             offset <= self.start || offset >= self.end,
@@ -326,6 +332,7 @@ fn resolve_metadata(
                 start: m.start,
                 end: m.end,
                 delta,
+                source_boundaries: None,
             },
         ),
     );
@@ -422,25 +429,20 @@ pub fn stage_metadata(
             i,
             Some(nodes.len()),
         ));
-        let (bytes, shift) = resolved.remove(&i).unwrap();
+        let (bytes, mut shift) = resolved.remove(&i).unwrap();
         if bytes == m.raw {
             continue;
-        }
-        if shift.delta > 0 {
-            shifts.insert(
-                rollout_id(&m.path).context("无法识别分页历史文件标识")?,
-                shift,
-            );
         }
         let temp = journal.dir.join(format!("{}.jsonl", uuid::Uuid::new_v4()));
         let result = (|| -> Result<()> {
             let before = crate::journal::hash(&m.path)?;
             let mut input = BufReader::new(File::open(&m.path)?);
-            let mut output = File::create(&temp)?;
+            let mut output = BufWriter::with_capacity(64 * 1024, File::create(&temp)?);
             let mut offset = 0;
             let mut ordinal = 0;
             let mut found = false;
             let mut line = vec![];
+            let mut boundaries = vec![0];
             loop {
                 line.clear();
                 ensure!(!ct.is_cancelled(), "操作已取消");
@@ -452,6 +454,9 @@ pub fn stage_metadata(
                     break;
                 }
                 ensure!(len <= 32 * 1024 * 1024, "单条会话事件超过 32 MiB");
+                if shift.delta > 0 && line.last() == Some(&b'\n') {
+                    boundaries.push(offset + len as u64);
+                }
                 if line.iter().all(u8::is_ascii_whitespace) {
                     output.write_all(&line)?;
                     offset += len as u64;
@@ -481,7 +486,8 @@ pub fn stage_metadata(
                 offset += len as u64;
             }
             ensure!(found, "会话元数据已消失");
-            output.sync_all()?;
+            output.flush()?;
+            output.get_ref().sync_all()?;
             drop(output);
             ensure!(
                 crate::journal::hash(&m.path)? == before,
@@ -496,6 +502,10 @@ pub fn stage_metadata(
                     .is_some_and(|c| c.path == m.path && c.before_hash == before),
                 "备份期间会话文件出现并发修改"
             );
+            // Reuse the validated source boundaries; commit still checks its full hash.
+            if shift.delta > 0 {
+                shift.source_boundaries = Some((offset, boundaries));
+            }
             Ok(())
         })();
         let _ = std::fs::remove_file(temp);
@@ -505,6 +515,12 @@ pub fn stage_metadata(
                 m.path.file_name().unwrap_or_default().to_string_lossy()
             )
         })?;
+        if shift.delta > 0 {
+            shifts.insert(
+                rollout_id(&m.path).context("无法识别分页历史文件标识")?,
+                shift,
+            );
+        }
     }
     progress(crate::Progress::new(
         "修复会话",
@@ -558,4 +574,27 @@ pub fn rebase_database(
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cached_boundaries_match_file_validation_including_unterminated_tail() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("history.jsonl");
+        let bytes = b"prefix\nmeta\none\nlast";
+        std::fs::write(&path, bytes).unwrap();
+        let mut shift = OffsetShift {
+            path, start: 7, end: 12, delta: 9, source_boundaries: None,
+        };
+        let expected: Vec<_> = (0..=bytes.len() as u64 + 1)
+            .map(|offset| shift.translate(offset).map_err(|e| e.to_string()))
+            .collect();
+        shift.source_boundaries = Some((bytes.len() as u64, vec![0, 7, 12, 16]));
+        for (offset, expected) in expected.into_iter().enumerate() {
+            assert_eq!(shift.translate(offset as u64).map_err(|e| e.to_string()), expected);
+        }
+    }
 }

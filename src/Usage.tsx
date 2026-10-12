@@ -1,3 +1,4 @@
+import {Select} from './components';
 import {useEffect,useMemo,useState} from 'react';
 import {ChevronLeft,ChevronRight,RefreshCw,Loader2} from 'lucide-react';
 import {call} from './api';
@@ -47,7 +48,7 @@ export default function Usage({onSession}:{onSession:(id:string)=>void}){
   <div className="toolbar usage-toolbar">
    <div className="segmented" aria-label="统计周期">{([['day','日'],['week','周'],['month','月']] as const).map(([value,label])=><button key={value} aria-pressed={period===value} onClick={()=>setPeriod(value)}>{label}</button>)}</div>
    <div className="usage-date"><button aria-label="上一周期" onClick={()=>move(-1)}><ChevronLeft size={16}/></button><label title="按本机时区统计"><input aria-label="统计日期" type="date" value={localDate(range.start)} max={localDate(new Date())} onChange={e=>{if(e.target.value)setDate(e.target.value)}}/>{period!=='day'&&<span>— {endLabel}</span>}</label><button aria-label="下一周期" disabled={range.end>new Date()} onClick={()=>move(1)}><ChevronRight size={16}/></button></div>
-   <select aria-label="统计模型" value={model} onChange={e=>setModel(e.target.value)}><option value="">全部模型</option>{[...new Set([...(report?.availableModels??[]),...(model?[model]:[])])].map(m=><option key={m}>{m}</option>)}</select>
+   <Select aria-label="统计模型" value={model} onChange={e=>setModel(e.target.value)}><option value="">全部模型</option>{[...new Set([...(report?.availableModels??[]),...(model?[model]:[])])].map(m=><option key={m}>{m}</option>)}</Select>
   </div>
   {error&&<div className="warning-box" role="alert">{error}<button onClick={()=>setRevision(v=>v+1)}>重试</button></div>}
   {report?.warnings.length? <details className="warning-box"><summary>部分记录未纳入统计（{report.warnings.length} 项）</summary>{report.warnings.map((w,i)=><p key={i}>{w}</p>)}</details>:null}

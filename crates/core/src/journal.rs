@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
     fs::{self, File},
-    io::{Read, Write},
+    io::{Read, Seek, SeekFrom, Write},
     path::{Path, PathBuf},
 };
 
@@ -22,6 +22,13 @@ pub struct Change {
     pub backup: Option<PathBuf>,
     #[serde(alias = "Stage")]
     pub stage: Option<PathBuf>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    patch: Option<FilePatch>,
+}
+#[derive(Clone, Serialize, Deserialize, Debug)]
+struct FilePatch {
+    start: u64,
+    end: u64,
 }
 #[derive(Clone, Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -60,6 +67,43 @@ pub fn hash(path: &Path) -> Result<Option<String>> {
 }
 pub fn hash_bytes(bytes: &[u8]) -> String {
     format!("{:X}", Sha256::digest(bytes))
+}
+fn matching_edges(before: &mut File, after: &mut File) -> Result<(u64, u64)> {
+    let old_len = before.metadata()?.len();
+    let new_len = after.metadata()?.len();
+    let limit = old_len.min(new_len);
+    let mut a = [0u8; 64 * 1024];
+    let mut b = [0u8; 64 * 1024];
+    let mut start = 0;
+    while start < limit {
+        let n = (limit - start).min(a.len() as u64) as usize;
+        before.read_exact(&mut a[..n])?;
+        after.read_exact(&mut b[..n])?;
+        if let Some(different) = a[..n].iter().zip(&b[..n]).position(|(a, b)| a != b) {
+            start += different as u64;
+            break;
+        }
+        start += n as u64;
+    }
+    let mut suffix = 0;
+    while suffix < limit - start {
+        let n = (limit - start - suffix).min(a.len() as u64) as usize;
+        before.seek(SeekFrom::Start(old_len - suffix - n as u64))?;
+        after.seek(SeekFrom::Start(new_len - suffix - n as u64))?;
+        before.read_exact(&mut a[..n])?;
+        after.read_exact(&mut b[..n])?;
+        if let Some(different) = a[..n]
+            .iter()
+            .rev()
+            .zip(b[..n].iter().rev())
+            .position(|(a, b)| a != b)
+        {
+            suffix += different as u64;
+            break;
+        }
+        suffix += n as u64;
+    }
+    Ok((start, suffix))
 }
 pub fn list(root: &Path, legacy: bool) -> Result<Vec<OperationInfo>> {
     if !root.exists() {
@@ -140,16 +184,49 @@ impl Journal {
             path,
             data.map(|d| Box::new(std::io::Cursor::new(d.to_vec())) as Box<dyn Read>),
             data.map(hash_bytes),
+            None,
+            None,
         )
     }
     pub fn stage_file(&mut self, path: &Path, source: &Path) -> Result<()> {
-        self.stage_reader(path, Some(Box::new(File::open(source)?)), hash(source)?)
+        crate::sessions::no_links(path)?;
+        let before = hash(path)?;
+        let after = hash(source)?;
+        let mut reader = File::open(source)?;
+        if before.is_some() && before != after {
+            let (start, suffix) = matching_edges(&mut File::open(path)?, &mut reader)?;
+            // Retain full encrypted backups; avoid encrypting unchanged bodies a second time.
+            if start + suffix >= 64 * 1024 {
+                let end = fs::metadata(path)?
+                    .len()
+                    .checked_sub(suffix)
+                    .context("暂存期间源文件被截断")?;
+                let replacement_len = reader
+                    .metadata()?
+                    .len()
+                    .checked_sub(start)
+                    .and_then(|n| n.checked_sub(suffix))
+                    .context("暂存文件被截断")?;
+                reader.seek(SeekFrom::Start(start))?;
+                return self.stage_reader(
+                    path,
+                    Some(Box::new(reader.take(replacement_len))),
+                    after,
+                    Some(FilePatch { start, end }),
+                    Some(&before),
+                );
+            }
+        }
+        reader.rewind()?;
+        self.stage_reader(path, Some(Box::new(reader)), after, None, Some(&before))
     }
     fn stage_reader(
         &mut self,
         path: &Path,
         data: Option<Box<dyn Read>>,
         after: Option<String>,
+        patch: Option<FilePatch>,
+        expected_before: Option<&Option<String>>,
     ) -> Result<()> {
         crate::sessions::no_links(path)?;
         let normalized = crate::sessions::normalize(path)?
@@ -165,6 +242,10 @@ impl Journal {
             "重复写入同一个文件"
         );
         let before = hash(path)?;
+        ensure!(
+            expected_before.is_none_or(|expected| expected == &before),
+            "暂存期间源文件被修改"
+        );
         if before == after {
             return Ok(());
         }
@@ -191,6 +272,7 @@ impl Journal {
             after_hash: after,
             backup,
             stage,
+            patch,
         });
         self.save()
     }
@@ -219,7 +301,18 @@ impl Journal {
             report("校验源文件与备份摘要（此阶段不可取消）", i, Some(total));
             ensure!(hash(&c.path)? == c.before_hash, "文件已被外部修改，未提交");
             check_wal(&c.path)?;
-            verify_payload(c.stage.as_deref(), &c.after_hash, &self.dir)?;
+            if let Some(patch) = &c.patch {
+                let stage = c.stage.as_deref().context("暂存记录缺少文件")?;
+                safe_payload(stage, &self.dir)?;
+                let mut sink = HashWriter(Sha256::new());
+                write_payload(stage, &c.path, Some(patch), &mut sink)?;
+                ensure!(
+                    Some(format!("{:X}", sink.0.finalize())) == c.after_hash,
+                    "备份或暂存摘要不符"
+                );
+            } else {
+                verify_payload(c.stage.as_deref(), &c.after_hash, &self.dir)?;
+            }
         }
         self.manifest.state = "Applying".into();
         self.save()?;
@@ -232,7 +325,7 @@ impl Journal {
                 );
                 ensure!(hash(&c.path)? == c.before_hash, "提交期间发现并发修改");
                 check_wal(&c.path)?;
-                replace(c.stage.as_deref(), &c.path)?;
+                replace(c.stage.as_deref(), &c.path, c.patch.as_ref(), &c.after_hash)?;
                 ensure!(hash(&c.path)? == c.after_hash, "写入后校验失败");
                 if fail_after == Some(i) {
                     anyhow::bail!("模拟提交失败");
@@ -310,16 +403,47 @@ fn check_wal(path: &Path) -> Result<()> {
     }
     Ok(())
 }
-fn replace(payload: Option<&Path>, dest: &Path) -> Result<()> {
+fn write_payload(
+    payload: &Path,
+    source: &Path,
+    patch: Option<&FilePatch>,
+    mut out: impl Write,
+) -> Result<()> {
+    if let Some(patch) = patch {
+        let mut input = File::open(source)?;
+        ensure!(
+            patch.start <= patch.end && patch.end <= input.metadata()?.len(),
+            "暂存差量范围无效"
+        );
+        ensure!(
+            std::io::copy(&mut Read::by_ref(&mut input).take(patch.start), &mut out)?
+                == patch.start,
+            "暂存期间源文件被截断"
+        );
+        crypto::decrypt_file(payload, &mut out)?;
+        input.seek(SeekFrom::Start(patch.end))?;
+        std::io::copy(&mut input, &mut out)?;
+        Ok(())
+    } else {
+        crypto::decrypt_file(payload, out)
+    }
+}
+fn replace(
+    payload: Option<&Path>,
+    dest: &Path,
+    patch: Option<&FilePatch>,
+    expected: &Option<String>,
+) -> Result<()> {
     if let Some(p) = payload {
         let parent = dest.parent().context("目标路径没有父目录")?;
         fs::create_dir_all(parent)?;
         let temp = parent.join(format!(".easy-switch-{}.restore", uuid::Uuid::new_v4()));
         let result = (|| {
             let mut out = File::options().create_new(true).write(true).open(&temp)?;
-            crypto::decrypt_file(p, &mut out)?;
+            write_payload(p, dest, patch, &mut out)?;
             out.sync_all()?;
             drop(out);
+            ensure!(&hash(&temp)? == expected, "暂存写入摘要不符");
             replace_file(&temp, dest)
         })();
         let _ = fs::remove_file(temp);
@@ -368,7 +492,7 @@ fn rollback_manifest(dir: &Path, m: &mut Manifest) -> Result<()> {
     verify_restore(dir, m)?;
     for c in m.files.iter().rev() {
         if hash(&c.path)? != c.before_hash {
-            replace(c.backup.as_deref(), &c.path)?;
+            replace(c.backup.as_deref(), &c.path, None, &c.before_hash)?;
             ensure!(hash(&c.path)? == c.before_hash, "恢复校验失败");
         }
     }

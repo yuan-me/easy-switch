@@ -531,6 +531,20 @@ fn unknown_projection_column_refuses_before_commit() {
     assert_eq!(fs::read(&a).unwrap(), before);
 }
 
+#[test]
+fn cached_repair_boundaries_do_not_allow_external_edits_at_commit() {
+    let (t, s, id, a, _, _) = unpadded();
+    let mut j = Journal::new(&t.path().join("store"), "concurrent edit").unwrap();
+    sessions::stage_changes(
+        &mut j, &s, &selected(&s, &id), "provider",
+        Some("p_synthetic_longer_provider"), &CancellationToken::new(),
+    ).unwrap();
+    let changed = format!("{}\n", fs::read_to_string(&a).unwrap());
+    fs::write(&a, &changed).unwrap();
+    assert!(j.commit().unwrap_err().to_string().contains("外部修改"));
+    assert_eq!(fs::read_to_string(&a).unwrap(), changed);
+}
+
 fn inherited_metadata_fixture(indexed: bool) -> (tempfile::TempDir, Settings, String, PathBuf) {
     let (t, s, parent, a, _) = fixture();
     let id = uuid::Uuid::new_v4().to_string();

@@ -18,8 +18,10 @@ use tokio_util::sync::CancellationToken;
 
 pub struct AppState {
     pub store: Store,
+    pub window_ready: AtomicBool,
     pub busy: Arc<AtomicBool>,
     pub cancel: Mutex<CancellationToken>,
+    model_refreshing: Arc<AtomicBool>,
     scanner: Arc<Mutex<core::sessions::Scanner>>,
     usage: Arc<Mutex<core::usage::UsageCache>>,
     migration_error: Option<String>,
@@ -28,8 +30,10 @@ impl AppState {
     pub fn new(store: Store, migration_error: Option<String>) -> Self {
         Self {
             store,
+            window_ready: AtomicBool::new(false),
             busy: Arc::new(AtomicBool::new(false)),
             cancel: Mutex::new(CancellationToken::new()),
+            model_refreshing: Arc::new(AtomicBool::new(false)),
             scanner: Arc::new(Mutex::new(Default::default())),
             usage: Arc::new(Mutex::new(Default::default())),
             migration_error,
@@ -41,6 +45,11 @@ impl AppState {
             "旧数据导入未完成，请先处理导入错误"
         );
         self.begin_recovery()
+    }
+    pub fn begin_model_refresh(&self) -> Result<Busy> {
+        ensure!(self.migration_error.is_none(), "旧数据导入未完成，请先处理导入错误");
+        ensure!(self.model_refreshing.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_ok(), "正在获取模型，请稍候");
+        Ok(Busy(self.model_refreshing.clone()))
     }
     pub fn begin_recovery(&self) -> Result<(Busy, CancellationToken)> {
         ensure!(
@@ -61,6 +70,15 @@ impl Drop for Busy {
     }
 }
 type Reply<T> = std::result::Result<T, String>;
+#[tauri::command]
+pub fn window_ready(window: tauri::WebviewWindow, state: State<AppState>) -> Reply<()> {
+    if !state.window_ready.load(Ordering::SeqCst) {
+        window.show().map_err(|e| e.to_string())?;
+        state.window_ready.store(true, Ordering::SeqCst);
+        window.set_focus().map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
 #[tauri::command]
 pub fn window_appearance(window: tauri::WebviewWindow, dark: bool, system: bool) -> Reply<bool> {
     window
@@ -106,12 +124,32 @@ fn public_settings(mut s: Settings) -> Value {
 }
 #[tauri::command]
 pub fn bootstrap(app: tauri::AppHandle, state: State<AppState>) -> Reply<Value> {
-    ( ||->Result<_>{let providers=state.store.providers()?.into_iter().map(public_provider).collect::<Vec<_>>();Ok(json!({"providers":providers,"settings":public_settings(state.store.settings()?),"version":app.package_info().version.to_string(),"migrationError":state.migration_error,"busy":state.busy.load(Ordering::SeqCst)}))})().map_err(err)
+    ( ||->Result<_>{let providers=state.store.providers()?.into_iter().map(public_provider).collect::<Vec<_>>();Ok(json!({"providers":providers,"modelCatalogs":core::catalog::load(&state.store)?.providers,"settings":public_settings(state.store.settings()?),"version":app.package_info().version.to_string(),"migrationError":state.migration_error,"busy":state.busy.load(Ordering::SeqCst)}))})().map_err(err)
 }
 #[tauri::command]
-pub fn save_provider(state: State<AppState>, provider: Provider, key: Option<String>) -> Reply<()> {
+pub fn reveal_provider_key(state: State<AppState>, id: String) -> Reply<String> {
+    (|| -> Result<String> {
+        let provider = state.store.providers()?.into_iter().find(|p| p.id == id).context("供应商不存在")?;
+        ensure!(matches!(provider.mode, AuthMode::Api | AuthMode::Mixed), "此供应商不使用 API Key");
+        core::crypto::unprotect(provider.protected_key.as_deref().context("API Key 未配置")?)
+    })().map_err(|_| "无法读取已保存的 API Key，请重试或重新填写".into())
+}
+#[tauri::command]
+pub fn save_provider(state: State<AppState>, provider: Provider, key: Option<String>, model_selection: Option<crate::models::Selection>) -> Reply<()> {
     let (_guard, _) = state.begin().map_err(err)?;
-    state.store.save_provider(provider, key).map_err(err)
+    (|| -> Result<()> {
+        let mut catalogs = core::catalog::load(&state.store)?;
+        if let Some(selection) = model_selection.as_ref() {
+            let list = catalogs.providers.entry(provider.id.clone()).or_default();
+            list.refresh(selection.available.clone(), core::catalog::now())?;
+            list.select(selection.excluded.clone(), &provider.model)?;
+        }
+        let id = provider.id.clone();
+        let default_model = provider.model.clone();
+        state.store.save_provider(provider, key)?;
+        if model_selection.is_some() { core::catalog::save(&state.store, catalogs, &id, Some(&default_model))?; }
+        Ok(())
+    })().map_err(err)
 }
 #[tauri::command]
 pub fn delete_provider(state: State<AppState>, id: String) -> Reply<()> {

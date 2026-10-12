@@ -4,13 +4,13 @@
 
 Windows x64 的 Codex 供应商与会话管理工具，使用 Tauri 2、Rust、React/TypeScript。
 
-**[下载 v1.1.2 安装包](https://github.com/yuan-me/easy-switch/releases/download/v1.1.2/Easy.Switch_1.1.2_x64-setup.exe)** · [最新正式版](https://github.com/yuan-me/easy-switch/releases/latest) · [更新记录](CHANGELOG.md)
+**[下载 v1.2.0 安装包](https://github.com/yuan-me/easy-switch/releases/download/v1.2.0/Easy.Switch_1.2.0_x64-setup.exe)** · [最新正式版](https://github.com/yuan-me/easy-switch/releases/latest) · [更新记录](CHANGELOG.md)
 
-v1.1.2 修复会话处理时误报“元数据重复或已被外部修改”，兼容子代理继承的父会话记录；进度框统一为跟随深浅主题的面板和蓝色细条。保留 Win10 兼容、真实进度及既有备份与回滚保护。
+v1.2.0 加快会话与索引修复，新增模型选择、启动及每小时同步；供应商编辑统一为居中分块窗口，支持双列模型、全选切换和 API Key 显示/隐藏，改善浮层可读性、动画和启动体验。
 
 ## 安装与使用
 
-1. 下载并运行 `Easy.Switch_1.1.2_x64-setup.exe`，安装到当前 Windows 用户。缺少 WebView2 时，安装器会联网下载其引导程序。
+1. 下载并运行 `Easy.Switch_1.2.0_x64-setup.exe`，安装到当前 Windows 用户。缺少 WebView2 时，安装器会联网下载其引导程序。
 2. 打开 Easy Switch，在“设置”中确认 Codex 数据目录和桌面程序路径。
 3. 在“供应商”中添加配置并切换。使用 Sub2API 图片能力时，选择 Responses 协议并开启“Sub2API 图片工具兼容”，完整重启 Codex 后在新会话验证。
 
@@ -19,6 +19,7 @@ v1.1.2 修复会话处理时误报“元数据重复或已被外部修改”，�
 ## 功能
 
 - 官方登录、混入 API、纯 API、聚合路由；Responses 透传和 Chat Completions 转换；按会话、轮转、权重与故障转移。
+- API / 混入供应商支持默认模型和 Codex 模型勾选；启动及每小时获取列表，保留排除项，新增模型显示 NEW 标签。
 - Sub2API 图片工具兼容开关。使用 `requires_openai_auth=false` 和指定 actor header，保留功能开关；不添加 `image_generation` 配置项。客户端工具注册和实际出图分别验收。
 - 会话搜索、分页、预览、Token 统计、Markdown 导出、归档恢复、Provider 修复、项目关联迁移及可恢复删除。
 - 当前 Windows 用户的 DPAPI 凭证与备份加密；提交日志、摘要校验、外部修改与 SQLite WAL 保护。关闭 Easy Switch 窗口不终止仍在服务的独立 Runtime。
@@ -33,6 +34,8 @@ v1.1.2 修复会话处理时误报“元数据重复或已被外部修改”，�
 安装前要求 Codex 已正常退出、代理无活动请求且无会话修改操作。下载失败可重试，签名或版本校验失败时拒绝安装；配置和会话存放在独立数据目录。需要回退时，可从 Releases 重新安装上一版本。
 
 ## 已验证与当前边界
+
+- v1.2.0：121 项 Rust 测试、29 项界面测试、模型/密钥原生验收及 11 项窗口/统计检查通过。修复性能来自合成基准；本轮未执行 VM 覆盖安装、Win10 真机或真实用户会话修复。
 
 - v1.1.2 修复代码：108 项 Rust 测试、8 项界面测试及 Win11 隔离原生检查通过。Win10 兼容已在 v1.1.1 由用户确认；本轮未重新执行 Win10 真机切换、覆盖安装或自动更新安装。
 

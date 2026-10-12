@@ -4,26 +4,27 @@ import {getCurrentWindow} from '@tauri-apps/api/window';
 import {call,preview} from './api';
 import {Brand} from './components';
 
-export function Titlebar({theme,onError}:{theme:'light'|'dark'|'system';onError:(text:string)=>void}) {
+export function Titlebar({theme,ready,onError}:{theme:'light'|'dark'|'system';ready:boolean;onError:(text:string)=>void}) {
  const [maximized,setMaximized]=useState(false);
  useEffect(()=>{
   if(preview)return;
-  const win=getCurrentWindow();let disposed=false;
+  const win=getCurrentWindow();let disposed=false,timer:ReturnType<typeof setTimeout>|undefined;
   const update=()=>win.isMaximized().then(value=>{if(!disposed)setMaximized(value)});
   update().catch(()=>{});
-  const listener=win.onResized(()=>{update().catch(()=>{})});
-  return()=>{disposed=true;listener.then(unlisten=>unlisten()).catch(()=>{})};
+  const listener=win.onResized(()=>{clearTimeout(timer);timer=setTimeout(()=>{update().catch(()=>{})},120)});
+  return()=>{disposed=true;clearTimeout(timer);listener.then(unlisten=>unlisten()).catch(()=>{})};
  },[]);
  useEffect(()=>{
-  if(preview)return;
+  if(preview||!ready)return;
   const media=matchMedia('(prefers-color-scheme: dark)');let disposed=false;
   const apply=async()=>{
    try{const mica=await call<boolean>('window_appearance',{dark:theme==='dark'||(theme==='system'&&media.matches),system:theme==='system'});if(!disposed)document.documentElement.dataset.backdrop=mica?'mica':'solid';}catch(e){if(!disposed){document.documentElement.dataset.backdrop='solid';onError(String(e))}}
+   if(!disposed)try{await call('window_ready')}catch(e){onError(String(e))}
   };
-  void apply();media.addEventListener('change',apply);return()=>{disposed=true;media.removeEventListener('change',apply)};
+  void apply();if(theme==='system')media.addEventListener('change',apply);return()=>{disposed=true;media.removeEventListener('change',apply)};
  // onError is an event sink, not a theme dependency.
  // eslint-disable-next-line react-hooks/exhaustive-deps
- },[theme]);
+ },[theme,ready]);
  async function action(kind:'minimize'|'maximize'|'close'){
   if(preview){if(kind==='maximize')setMaximized(v=>!v);return;}
   try{const win=getCurrentWindow();if(kind==='maximize')await win.toggleMaximize();else await win[kind]()}catch(e){onError(String(e))}

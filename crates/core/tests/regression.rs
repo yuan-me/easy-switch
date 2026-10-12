@@ -119,6 +119,44 @@ fn current_project_id_and_local_catalog_migrate_together() {
 }
 
 #[test]
+fn repeated_provider_repair_does_not_rewrite_correct_indexes_or_reset_catalog() {
+    let f = fixture();
+    let path = db(&f);
+    let c = rusqlite::Connection::open(&path).unwrap();
+    c.execute_batch("CREATE TABLE local_thread_catalog(host_id TEXT,thread_id TEXT,model_provider TEXT);
+        CREATE TABLE local_thread_catalog_hosts(host_id TEXT,host_kind TEXT);
+        INSERT INTO local_thread_catalog_hosts VALUES('local','local'),('remote','remote');
+        CREATE TABLE local_thread_catalog_metadata(catalog_revision INTEGER);
+        INSERT INTO local_thread_catalog_metadata VALUES(7);
+        CREATE TABLE local_thread_catalog_sync_state(host_id TEXT,initial_build_complete INTEGER,watermark_updated_at INTEGER);
+        INSERT INTO local_thread_catalog_sync_state VALUES('local',1,123);").unwrap();
+    c.execute("INSERT INTO local_thread_catalog VALUES('local',?1,'a'),('remote',?1,'remote-provider')", [&f.id]).unwrap();
+    drop(c);
+    let rows = scan(&f);
+    let snapshots = [fs::read(&f.file).unwrap(), fs::read(&path).unwrap()];
+    let mut j = Journal::new(&f.store.root, "already correct").unwrap();
+    stage_changes(&mut j, &f.settings, &rows, "provider", Some("a"), &CancellationToken::new()).unwrap();
+    assert!(j.manifest.files.is_empty());
+    j.commit().unwrap();
+    drop(j);
+    assert_eq!(fs::read(&f.file).unwrap(), snapshots[0]);
+    assert_eq!(fs::read(&path).unwrap(), snapshots[1]);
+
+    let c = rusqlite::Connection::open(&path).unwrap();
+    c.execute("UPDATE local_thread_catalog SET model_provider='stale' WHERE host_id='local'", []).unwrap();
+    drop(c);
+    let mut j = Journal::new(&f.store.root, "stale catalog only").unwrap();
+    stage_changes(&mut j, &f.settings, &rows, "provider", Some("a"), &CancellationToken::new()).unwrap();
+    assert_eq!(j.manifest.files.len(), 1);
+    j.commit().unwrap();
+    let c = rusqlite::Connection::open(&path).unwrap();
+    assert_eq!(c.query_row("SELECT model_provider FROM local_thread_catalog WHERE host_id='local'", [], |r| r.get::<_,String>(0)).unwrap(), "a");
+    assert_eq!(c.query_row("SELECT model_provider FROM local_thread_catalog WHERE host_id='remote'", [], |r| r.get::<_,String>(0)).unwrap(), "remote-provider");
+    assert_eq!(c.query_row("SELECT catalog_revision FROM local_thread_catalog_metadata", [], |r| r.get::<_,i64>(0)).unwrap(), 8);
+    assert_eq!(c.query_row("SELECT initial_build_complete FROM local_thread_catalog_sync_state", [], |r| r.get::<_,i64>(0)).unwrap(), 0);
+}
+
+#[test]
 fn ten_thousand_indexed_sessions_scan_without_reading_bodies() {
     let f = fixture();
     let path = db(&f);

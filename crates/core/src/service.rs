@@ -40,7 +40,7 @@ pub fn switch(
         .providers()?
         .into_iter()
         .find(|p| Some(&p.id) == settings.active_provider_id.as_ref());
-    let next = config::update(
+    let mut next = config::update(
         &before,
         p,
         &settings,
@@ -74,6 +74,7 @@ pub fn switch(
     };
     let new_auth = config::next_auth(store, &settings, p, auth.as_deref(), secret.as_deref())?;
     report(&progress, "备份配置", "备份配置与登录信息", true);
+    catalog::stage_for_provider(&mut j, store, p, &settings, &mut next)?;
     j.stage(&cfg, Some(next.as_bytes()))?;
     j.stage(&auth_path, new_auth.as_deref())?;
     sessions::stage_changes_with_progress(

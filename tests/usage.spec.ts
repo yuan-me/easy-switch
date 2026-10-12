@@ -27,9 +27,11 @@ test('usage periods, model filtering, session navigation and timed notifications
  await page.getByLabel('统计模型').selectOption('模型 A');await expect(page.getByTestId('usage-total')).toHaveText('600K');
  await page.setViewportSize({width:940,height:620});
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+ await page.screenshot({animations:'disabled',path:'artifacts/screenshots/islands-usage-min.png'});
  await page.getByRole('button',{name:'界面优化讨论',exact:true}).click();
  await expect(page.locator('.session-row')).toHaveCount(12);await expect(page.locator('.detail-heading h2')).toHaveText('界面优化讨论');
  await expect(page.locator('.detail-footer')).toBeInViewport();
+ await page.screenshot({animations:'disabled',path:'artifacts/screenshots/islands-session-min.png'});
  await expect(page.locator('.message pre').first()).toHaveCSS('user-select','none');
  await page.getByRole('button',{name:'复制线程 ID',exact:true}).click();await expect(page.getByRole('status')).toContainText('线程 ID 已复制');
  await page.clock.fastForward(9000);await expect(page.getByRole('status')).toBeVisible();
@@ -37,5 +39,19 @@ test('usage periods, model filtering, session navigation and timed notifications
  await page.clock.fastForward(2000);await expect(page.getByRole('status')).toBeVisible();
  await page.clock.fastForward(8000);await expect(page.locator('.notice')).toHaveCount(0);
  await page.getByRole('button',{name:'复制线程 ID',exact:true}).click();await page.getByRole('button',{name:'关闭提示',exact:true}).click();await expect(page.locator('.notice')).toHaveCount(0);
+ await page.evaluate(()=>{
+  const original=Date.prototype.toLocaleTimeString;(window as any).messageFormats=0;
+  Date.prototype.toLocaleTimeString=function(...args){(window as any).messageFormats++;return original.apply(this,args)};
+ });
+ await page.getByRole('button',{name:'供应商',exact:true}).click();
+ const formats=await page.evaluate(()=>(window as any).messageFormats);
+ for(let i=0;i<3;i++){
+  await page.getByRole('button',{name:'添加供应商',exact:true}).click();await expect(page.getByRole('dialog')).toBeVisible();
+  await page.keyboard.press('Escape');await expect(page.getByRole('dialog')).not.toBeVisible();
+ }
+ expect(await page.evaluate(()=>(window as any).messageFormats)).toBe(formats);
+ await page.getByRole('button',{name:'会话',exact:true}).click();
+ await expect(page.locator('.detail-heading h2')).toHaveText('界面优化讨论');
+ await expect(page.locator('.message')).toHaveCount(12);
  expect(errors).toEqual([]);
 });
