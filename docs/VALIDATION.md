@@ -239,8 +239,13 @@ React 保持列表组件与行 key，用定时扫描更新数据，因此旧 WPF
 
 ## 2026-10-12 v1.2.0 正式发布验证
 
-- 代码提交及发布标签：`2e42238a90880087e6c2828fdd24c7bec1648c5f`；[Check](https://github.com/yuan-me/easy-switch/actions/runs/38207451271) 与 [Release](https://github.com/yuan-me/easy-switch/actions/runs/38207451755) 均成功。云端 Check 实际输出为 121 项 Rust、29 项 Playwright 测试通过。
+- 代码提交及发布标签：`7a0c9843214d4f9e8393fbf2543f3b1dbf3353af`；[Check](https://github.com/yuan-me/easy-switch/actions/runs/38207451271) 与 [Release](https://github.com/yuan-me/easy-switch/actions/runs/38207451755) 均成功。云端 Check 实际输出为 121 项 Rust、29 项 Playwright 测试通过。
 - [v1.2.0](https://github.com/yuan-me/easy-switch/releases/tag/v1.2.0) 已设为最新正式版，发布时间 `2026-10-12T05:34:07Z`。更新清单包含中文说明，版本、下载地址和签名与安装包一致。
 - 安装包签名、版本绑定、篡改拒绝、安装包和程序的六尺寸图标通过。解包后的 1.2.0 程序在独立 store/home 上通过 11 项原生验收；未执行覆盖安装。
 - 匿名公开下载检查于 `2026-10-12T05:34:24.3377927Z` 通过：清单 HTTP 200，安装包 HTTP 200，5,013,236 字节，SHA-256 `6f96f163c5c7a7067bbc9ec0bbf9d837916ff00df1b16d3f3ff2ccaa942e8975`。匿名下载与草稿阶段验证的安装包完全相同。
 - 清理 50 个临时目录、695 个文件，共 81,413,410 字节（约 77.64 MiB）；18 张临时截图已归档。仅删除合成数据和重复产物，保留报告、公开下载的签名安装包、真实数据、密钥与恢复备份。
+
+## 2026-10-12 发布源码历史整理
+
+- 按用户要求清理了 main 和 v1.2.0 的文档历史，发布源码标签现为 `7a0c9843214d4f9e8393fbf2543f3b1dbf3353af`。已核对程序源代码与已验证构建一致，安装包、更新签名及下载地址未变。
+- 上方 CI 链接保留原始运行记录；由于历史整理，运行记录的提交标识与当前标签不同。这不代表重新构建或替换过正式安装包。
