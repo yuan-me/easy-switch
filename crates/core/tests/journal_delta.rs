@@ -42,6 +42,7 @@ fn delta_staging_keeps_full_backup_and_restores_growth_shrink_insert_delete_and_
         assert_eq!(fs::read(&path).unwrap(), after);
         let id = j.dir.file_name().unwrap().to_str().unwrap().to_owned();
         // Recovery continues to use the existing full-file backup contract.
+        j.manifest.state = "Applying".into();
         let mut saved = serde_json::to_value(&j.manifest).unwrap();
         saved["files"][0].as_object_mut().unwrap().remove("patch");
         fs::write(

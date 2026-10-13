@@ -224,6 +224,8 @@ fn restore_rejects_unmerged_wal_before_writing_other_files() {
         })
         .unwrap();
         j.commit().unwrap();
+        j.manifest.state = "Applying".into();
+        fs::write(j.dir.join("manifest.json"), serde_json::to_vec(&j.manifest).unwrap()).unwrap();
         id = j.dir.file_name().unwrap().to_str().unwrap().to_owned();
     }
     fs::write(PathBuf::from(format!("{}-wal", path.display())), "pending").unwrap();
@@ -386,6 +388,8 @@ fn duplicate_indexes_batch_and_restore_cover_every_database() {
         .unwrap();
         let id = j.dir.file_name().unwrap().to_string_lossy().into_owned();
         j.commit().unwrap();
+        j.manifest.state = "Applying".into();
+        fs::write(j.dir.join("manifest.json"), serde_json::to_vec(&j.manifest).unwrap()).unwrap();
         drop(j);
         for path in [&first, &second] {
             let c = rusqlite::Connection::open(path).unwrap();
@@ -863,6 +867,9 @@ fn commit_and_restore() {
         id = j.dir.file_name().unwrap().to_string_lossy().to_string();
         j.stage(&f.file, Some(b"changed")).unwrap();
         j.commit().unwrap();
+        // Simulate a crash before the durable completion record.
+        j.manifest.state = "Applying".into();
+        fs::write(j.dir.join("manifest.json"), serde_json::to_vec(&j.manifest).unwrap()).unwrap();
     }
     restore(&f.store.root, &id, &[f.settings.codex_home.clone()]).unwrap();
     assert_eq!(fs::read(&f.file).unwrap(), before);
@@ -897,6 +904,9 @@ fn external_modification_prevents_restore() {
         id = j.dir.file_name().unwrap().to_string_lossy().to_string();
         j.stage(&f.file, Some(b"changed")).unwrap();
         j.commit().unwrap();
+        // Simulate a crash before the durable completion record.
+        j.manifest.state = "Applying".into();
+        fs::write(j.dir.join("manifest.json"), serde_json::to_vec(&j.manifest).unwrap()).unwrap();
     }
     fs::write(&f.file, b"external").unwrap();
     assert!(restore(&f.store.root, &id, &[f.settings.codex_home.clone()]).is_err());
@@ -928,6 +938,9 @@ fn corrupt_backup_prevents_all_restore_writes() {
         let mut j = Journal::new(&f.store.root, "test").unwrap();
         j.stage(&f.file, Some(b"new")).unwrap();
         j.commit().unwrap();
+        // Simulate a crash before the durable completion record.
+        j.manifest.state = "Applying".into();
+        fs::write(j.dir.join("manifest.json"), serde_json::to_vec(&j.manifest).unwrap()).unwrap();
         id = j.dir.file_name().unwrap().to_string_lossy().to_string();
         fs::write(j.manifest.files[0].backup.as_ref().unwrap(), b"bad").unwrap();
     }
@@ -1038,10 +1051,9 @@ fn migration_preserves_historical_paths() {
     );
 }
 #[test]
-fn delete_is_recoverable() {
+fn completed_delete_does_not_retain_backups() {
     let f = fixture();
     db(&f);
-    let id;
     {
         let mut j = Journal::new(&f.store.root, "delete").unwrap();
         stage_changes(
@@ -1054,11 +1066,10 @@ fn delete_is_recoverable() {
         )
         .unwrap();
         j.commit().unwrap();
-        id = j.dir.file_name().unwrap().to_string_lossy().to_string();
     }
     assert!(!f.file.exists());
-    restore(&f.store.root, &id, &[f.settings.codex_home.clone()]).unwrap();
-    assert_eq!(scan(&f).len(), 1);
+    assert!(scan(&f).is_empty());
+    assert_eq!(fs::read_dir(f.store.root.join("operations")).unwrap().count(), 0);
 }
 #[test]
 fn token_cumulative_dedup_and_missing_values() {
@@ -1276,7 +1287,7 @@ fn legacy_manifest_and_chunked_backup_restore() {
     let backup = dir.join("0.before.dpapi");
     crypto::encrypt_file(&f.file, &backup).unwrap();
     fs::write(&f.file, b"after").unwrap();
-    let manifest = json!({"State":"Complete","Description":"legacy","Files":[{"Path":f.file,"BeforeHash":hash_bytes(&original),"AfterHash":hash_bytes(b"after"),"Backup":backup,"Stage":null}]});
+    let manifest = json!({"State":"Applying","Description":"legacy","Files":[{"Path":f.file,"BeforeHash":hash_bytes(&original),"AfterHash":hash_bytes(b"after"),"Backup":backup,"Stage":null}]});
     fs::write(
         dir.join("manifest.json"),
         serde_json::to_vec(&manifest).unwrap(),
@@ -1409,7 +1420,6 @@ fn cancellation_from_progress_keeps_original_and_never_commits() {
     assert!(
         list(&f.store.root.join("operations"), false)
             .unwrap()
-            .iter()
-            .all(|o| o.state == "RolledBack")
+            .is_empty()
     );
 }

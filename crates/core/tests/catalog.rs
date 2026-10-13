@@ -86,10 +86,9 @@ fn fixture() -> (tempfile::TempDir, Store, Settings, Provider) {
 }
 
 #[test]
-fn active_catalog_applies_recovers_and_unchanged_refresh_does_not_create_backups() {
+fn active_catalog_applies_and_refreshes_do_not_retain_backups() {
     let (_temp, store, settings, _p) = fixture();
     let cfg = settings.codex_home.join("config.toml");
-    let original = fs::read(&cfg).unwrap();
     let mut catalogs = catalog::load(&store).unwrap();
     catalogs
         .providers
@@ -108,7 +107,7 @@ fn active_catalog_applies_recovers_and_unchanged_refresh_does_not_create_backups
     assert!(config.contains("unknown = 42"));
     assert!(config.contains("model_catalog_json"));
     let ops = journal::list(&store.root.join("operations"), false).unwrap();
-    assert_eq!(ops.len(), 1);
+    assert!(ops.is_empty());
     let mut catalogs = catalog::load(&store).unwrap();
     catalogs
         .providers
@@ -121,15 +120,8 @@ fn active_catalog_applies_recovers_and_unchanged_refresh_does_not_create_backups
         journal::list(&store.root.join("operations"), false)
             .unwrap()
             .len(),
-        1
+        0
     );
-    journal::restore(
-        &store.root,
-        &ops[0].id,
-        &[settings.codex_home.clone(), store.root.clone()],
-    )
-    .unwrap();
-    assert_eq!(fs::read(cfg).unwrap(), original);
 }
 
 #[test]

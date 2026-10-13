@@ -53,6 +53,33 @@ impl Store {
     pub fn default_root() -> PathBuf {
         PathBuf::from(std::env::var_os("LOCALAPPDATA").unwrap_or_default()).join("EasySwitch")
     }
+    pub fn legacy_root(&self) -> Result<Option<PathBuf>> {
+        Ok(self.read("legacy-store.json", None)?.or_else(|| {
+            (self.root == Self::default_root()).then(|| self.root.with_file_name("CodexSwitch"))
+        }))
+    }
+    pub fn cleanup_operations(&self) -> Result<()> {
+        let settings = self.settings()?;
+        let mut roots = vec![self.root.clone()];
+        if let Some(legacy) = self.legacy_root()? {
+            if legacy != self.root {
+                roots.push(legacy);
+            }
+        }
+        let mut allowed = roots.clone();
+        allowed.push(settings.codex_home);
+        allowed.extend(settings.sqlite_home);
+        let errors: Vec<_> = roots
+            .iter()
+            .filter_map(|root| {
+                crate::journal::cleanup(root, &allowed)
+                    .err()
+                    .map(|e| format!("{}：{e}", root.display()))
+            })
+            .collect();
+        ensure!(errors.is_empty(), "{}", errors.join("；"));
+        Ok(())
+    }
     pub fn read<T: DeserializeOwned>(&self, name: &str, fallback: T) -> Result<T> {
         let p = self.root.join(name);
         if !p.exists() {

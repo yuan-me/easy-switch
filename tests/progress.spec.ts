@@ -21,7 +21,8 @@ async function desktop(page:Page,mica:boolean|'error'=false){
     if(command==='plugin:window|is_maximized')return false;
     if(command==='switch_provider')return new Promise((resolve,reject)=>{w.finish=()=>resolve('Codex 已启动');w.fail=()=>reject('模拟修复失败，原始文件未修改')});
     if(command==='cancel_operation'){w.fail();return}
-    if(command==='list_operations')return [{id:'preview-backup',description:'切换供应商：OpenAI 官方',state:'Complete',fileCount:77,legacy:false}];
+    if(command==='interrupted_operations')return w.interrupted?[{id:'interrupted',description:'切换供应商',state:'Applying',fileCount:2,legacy:false}]:[];
+    if(command==='restore_operation'){if(w.recoveryFails)throw new Error('检测到外部改动，拒绝覆盖');w.interrupted=false;return '中断操作已恢复'}
     return null;
    }
   }});
@@ -29,6 +30,24 @@ async function desktop(page:Page,mica:boolean|'error'=false){
  await page.goto('/');
  await expect(page.getByRole('heading',{name:'供应商',exact:true})).toBeVisible();
 }
+
+test('only interrupted operations expose recovery, with external-edit errors preserved',async({page})=>{
+ await page.addInitScript(()=>{Object.assign(window,{interrupted:true,recoveryFails:true})});
+ await desktop(page);
+ await expect(page.getByRole('navigation',{name:'主导航'}).getByRole('button')).toHaveCount(4);
+ await expect(page.getByRole('button',{name:'备份恢复',exact:true})).toHaveCount(0);
+ await expect(page.getByRole('alert')).toContainText('上次操作中断');
+ await page.getByRole('button',{name:'恢复中断操作',exact:true}).click();
+ await expect(page.getByRole('dialog')).toContainText('检测到外部修改时停止恢复');
+ await page.getByRole('button',{name:'检查并恢复',exact:true}).click();
+ await expect(page.getByRole('alert').filter({hasText:'拒绝覆盖'})).toBeVisible();
+ await expect(page.getByRole('button',{name:'恢复中断操作',exact:true})).toBeEnabled();
+ await page.evaluate(()=>{(window as any).recoveryFails=false});
+ await page.getByRole('button',{name:'恢复中断操作',exact:true}).click();
+ await page.getByRole('button',{name:'检查并恢复',exact:true}).click();
+ await expect(page.getByRole('button',{name:'恢复中断操作',exact:true})).toHaveCount(0);
+ await expect(page.getByRole('status')).toContainText('中断操作已恢复');
+});
 
 test('opaque fallback in both themes, Mica opt-in, and text selection',async({page})=>{
  const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
@@ -77,6 +96,7 @@ for(const failed of [false,true])test(`startup reveals only after configuration 
    metadata:{currentWindow:{label:'main'},currentWebview:{label:'main'}},transformCallback:()=>1,
    invoke:async(command:string)=>{
     w.startupCalls.push(command);
+    if(command==='interrupted_operations')return [];
     if(command==='bootstrap')return new Promise((resolve,reject)=>{w.finishBootstrap=()=>failed?reject(new Error('配置读取失败')):resolve({providers:[],settings:{theme:'dark',scrollPositions:{}},version:'test',migrationError:null})});
     if(command==='window_appearance')return new Promise((resolve,reject)=>{w.finishAppearance=()=>failed?reject(new Error('Mica unavailable')):resolve(true)});
     if(command==='window_ready')w.revealed.push({theme:document.documentElement.dataset.theme,backdrop:document.documentElement.dataset.backdrop,loading:!!document.querySelector('.loading')});
@@ -151,15 +171,17 @@ test('switch progress, elapsed time, safe commit, completion and cancellation',a
  await expect(page.locator('.operation-progress')).toContainText('当前子任务 49%');
  await expect(page.locator('progress')).toHaveAttribute('value','38');
  await expect(page.locator('progress')).toHaveAttribute('max','77');
- await page.getByRole('button',{name:'备份恢复',exact:true}).click();
+ await expect(page.getByRole('button',{name:'备份恢复',exact:true})).toHaveCount(0);
+ await page.getByRole('button',{name:'设置',exact:true}).click();
  await page.clock.runFor(300);
  await expect(page.locator('.operation-progress')).toHaveCSS('background-color','rgb(255, 255, 255)');
  await expect(page.locator('.operation-progress')).not.toHaveCSS('box-shadow','none');
  await page.screenshot({animations:'disabled',path:join(tmpdir(),'easy-switch-progress-light.png')});
  await page.setViewportSize({width:940,height:620});
  await expect(page.locator('.operation-progress')).toBeInViewport();
- const panel=await page.locator('.operation-progress').boundingBox(),list=await page.locator('.operation-list').boundingBox();
- expect(panel?.x).toBe(list?.x);
+ const panel=await page.locator('.operation-progress').boundingBox(),main=await page.locator('main').boundingBox();
+ expect(panel!.x).toBeGreaterThanOrEqual(main!.x);
+ expect(panel!.x+panel!.width).toBeLessThanOrEqual(main!.x+main!.width);
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
  await page.screenshot({animations:'disabled',path:join(tmpdir(),'easy-switch-progress-minimum.png')});
  await page.emulateMedia({colorScheme:'dark'});

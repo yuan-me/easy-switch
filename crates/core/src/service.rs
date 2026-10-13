@@ -97,7 +97,7 @@ pub fn switch(
         runtime::ensure_started_blocking(store)?;
     }
     host.start()
-        .context("配置已经提交，但 Codex 启动失败；可在备份恢复中回滚")
+        .context("配置已经提交，但 Codex 启动失败；请手动启动或重新切换供应商")
 }
 pub fn batch(
     store: &Store,

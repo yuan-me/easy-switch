@@ -17,7 +17,7 @@ async fn idle_runtime_refused_connection_is_not_unknown_state() {
     assert!(runtime::health_check(&store).await.unwrap().is_none());
 }
 #[test]
-fn refused_restore_keeps_completed_operation_state() {
+fn refused_restore_keeps_interrupted_operation_state() {
     let t = tempfile::tempdir().unwrap();
     let target = t.path().join("value");
     std::fs::write(&target, "before").unwrap();
@@ -25,12 +25,14 @@ fn refused_restore_keeps_completed_operation_state() {
     j.stage(&target, Some(b"after")).unwrap();
     j.commit().unwrap();
     let id = j.dir.file_name().unwrap().to_str().unwrap().to_owned();
+    j.manifest.state = "Applying".into();
+    std::fs::write(j.dir.join("manifest.json"), serde_json::to_vec(&j.manifest).unwrap()).unwrap();
     drop(j);
     std::fs::write(&target, "external update").unwrap();
     assert!(journal::restore(t.path(), &id, &[t.path().to_path_buf()]).is_err());
     assert_eq!(
         journal::list(&t.path().join("operations"), false).unwrap()[0].state,
-        "Complete"
+        "Applying"
     );
     assert_eq!(std::fs::read_to_string(target).unwrap(), "external update");
 }

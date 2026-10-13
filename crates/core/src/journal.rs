@@ -49,6 +49,139 @@ pub struct OperationInfo {
     pub file_count: usize,
     pub legacy: bool,
 }
+pub fn finished(state: &str) -> bool {
+    matches!(state, "Complete" | "Restored" | "RolledBack")
+}
+
+fn lock(root: &Path) -> Result<File> {
+    crate::sessions::no_links(root)?;
+    let path = root.join("operation.lock");
+    crate::sessions::no_links(&path)?;
+    let lock = File::options()
+        .create(true)
+        .read(true)
+        .write(true)
+        .truncate(false)
+        .open(path)?;
+    lock.try_lock_exclusive()
+        .context("另一个写入操作正在进行")?;
+    Ok(lock)
+}
+
+// Delete the manifest last so a failed cleanup can be retried without losing its state.
+fn remove_operation(dir: &Path) -> Result<()> {
+    crate::sessions::no_links(dir)?;
+    let parent = dir.parent().context("操作目录无效")?;
+    ensure!(
+        parent.file_name().is_some_and(|n| n == "operations")
+            && dir.canonicalize()?.parent() == Some(parent.canonicalize()?.as_path()),
+        "操作目录越界"
+    );
+    let files = fs::read_dir(dir)?.collect::<std::io::Result<Vec<_>>>()?;
+    for file in &files {
+        crate::sessions::no_links(&file.path())?;
+        ensure!(
+            file.file_type()?.is_file(),
+            "操作目录包含未知子目录，未清理"
+        );
+    }
+    for file in files.iter().filter(|f| f.file_name() != "manifest.json") {
+        fs::remove_file(file.path())?;
+    }
+    let manifest = dir.join("manifest.json");
+    if manifest.exists() {
+        fs::remove_file(manifest)?;
+    }
+    fs::remove_dir(dir)?;
+    Ok(())
+}
+
+fn cleanup_temps(m: &Manifest, allowed: &[PathBuf]) -> Result<()> {
+    let mut parents = std::collections::HashSet::new();
+    for change in &m.files {
+        if let Some(parent) = change.path.parent().filter(|p| {
+            allowed
+                .iter()
+                .any(|r| crate::sessions::within(p, r).unwrap_or(false))
+        }) {
+            parents.insert(parent.to_path_buf());
+        }
+    }
+    for parent in parents {
+        crate::sessions::no_links(&parent)?;
+        if !parent.exists() {
+            continue;
+        }
+        for temp in fs::read_dir(&parent)? {
+            let temp = temp?;
+            let name = temp.file_name();
+            let name = name.to_string_lossy();
+            if name
+                .strip_prefix(".easy-switch-")
+                .and_then(|n| n.strip_suffix(".restore"))
+                .is_some_and(|id| uuid::Uuid::parse_str(id).is_ok())
+            {
+                crate::sessions::no_links(&temp.path())?;
+                ensure!(temp.file_type()?.is_file(), "暂存路径不是普通文件");
+                fs::remove_file(temp.path())?;
+            }
+        }
+    }
+    Ok(())
+}
+
+fn cleanup_locked(root: &Path, allowed: &[PathBuf]) -> Result<()> {
+    let ops = root.join("operations");
+    crate::sessions::no_links(&ops)?;
+    if !ops.exists() {
+        return Ok(());
+    }
+    let mut errors = vec![];
+    for entry in fs::read_dir(&ops)? {
+        let entry = entry?;
+        let result = (|| -> Result<()> {
+            let dir = entry.path();
+            crate::sessions::no_links(&dir)?;
+            if !entry.file_type()?.is_dir() {
+                return Ok(());
+            }
+            let path = dir.join("manifest.json");
+            crate::sessions::no_links(&path)?;
+            if !path.exists() {
+                if fs::read_dir(&dir)?.next().is_none() {
+                    fs::remove_dir(&dir)?;
+                } else {
+                    anyhow::bail!("缺少操作清单，已保留文件");
+                }
+                return Ok(());
+            }
+            let m: Manifest = serde_json::from_slice(&fs::read(path)?)?;
+            // Preparing is persisted before staging; no target is written before Applying.
+            if finished(&m.state) || m.state == "Preparing" {
+                cleanup_temps(&m, allowed)?;
+                remove_operation(&dir)?;
+            }
+            Ok(())
+        })();
+        if let Err(e) = result {
+            errors.push(format!("{}：{e}", entry.file_name().to_string_lossy()));
+        }
+    }
+    ensure!(
+        errors.is_empty(),
+        "部分操作副本未清理：{}",
+        errors.join("；")
+    );
+    Ok(())
+}
+
+pub fn cleanup(root: &Path, allowed: &[PathBuf]) -> Result<()> {
+    if !root.exists() {
+        return Ok(());
+    }
+    let _lock = lock(root)?;
+    cleanup_locked(root, allowed)
+}
 pub fn hash(path: &Path) -> Result<Option<String>> {
     if !path.exists() {
         return Ok(None);
@@ -106,16 +239,19 @@ fn matching_edges(before: &mut File, after: &mut File) -> Result<(u64, u64)> {
     Ok((start, suffix))
 }
 pub fn list(root: &Path, legacy: bool) -> Result<Vec<OperationInfo>> {
+    crate::sessions::no_links(root)?;
     if !root.exists() {
         return Ok(vec![]);
     }
     let mut all = vec![];
     for d in fs::read_dir(root)? {
         let d = d?;
+        crate::sessions::no_links(&d.path())?;
         if !d.file_type()?.is_dir() {
             continue;
         }
         let p = d.path().join("manifest.json");
+        crate::sessions::no_links(&p)?;
         if !p.exists() {
             continue;
         }
@@ -139,21 +275,13 @@ pub struct Journal {
 impl Journal {
     pub fn new(root: &Path, description: &str) -> Result<Self> {
         fs::create_dir_all(root)?;
-        let lock = File::options()
-            .create(true)
-            .read(true)
-            .write(true)
-            .truncate(false)
-            .open(root.join("operation.lock"))?;
-        lock.try_lock_exclusive()
-            .context("另一个写入操作正在进行")?;
+        let lock = lock(root)?;
+        cleanup_locked(root, &[])?;
         let ops = root.join("operations");
         fs::create_dir_all(&ops)?;
         ensure!(
-            list(&ops, false)?
-                .iter()
-                .all(|m| matches!(m.state.as_str(), "Complete" | "Restored" | "RolledBack")),
-            "存在未完成操作，请先在备份恢复中处理"
+            list(&ops, false)?.iter().all(|m| finished(&m.state)),
+            "存在未完成操作，请先使用首页的中断恢复提示处理"
         );
         let dir = ops.join(format!(
             "{}-{}",
@@ -354,7 +482,14 @@ impl Drop for Journal {
     fn drop(&mut self) {
         if self.manifest.state == "Preparing" {
             self.manifest.state = "RolledBack".into();
-            let _ = self.save();
+            if self.save().is_err() {
+                return;
+            }
+        }
+        if finished(&self.manifest.state) {
+            if let Err(e) = remove_operation(&self.dir) {
+                eprintln!("操作副本清理未完成，下次启动重试：{e}");
+            }
         }
     }
 }
@@ -504,16 +639,12 @@ pub fn restore(root: &Path, id: &str, allowed: &[PathBuf]) -> Result<()> {
         !id.is_empty() && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-'),
         "备份 ID 无效"
     );
-    let lock = File::options()
-        .create(true)
-        .read(true)
-        .write(true)
-        .truncate(false)
-        .open(root.join("operation.lock"))?;
-    lock.try_lock_exclusive()?;
+    let _lock = lock(root)?;
     let dir = root.join("operations").join(id);
     let path = dir.join("manifest.json");
+    crate::sessions::no_links(&path)?;
     let mut m: Manifest = serde_json::from_slice(&fs::read(&path)?)?;
+    ensure!(!finished(&m.state), "操作已经结束，不再提供历史备份恢复");
     for c in &m.files {
         ensure!(
             allowed
@@ -527,5 +658,7 @@ pub fn restore(root: &Path, id: &str, allowed: &[PathBuf]) -> Result<()> {
     m.state = "Restoring".into();
     atomic_write(&path, &serde_json::to_vec_pretty(&m)?)?;
     rollback_manifest(&dir, &mut m)?;
-    atomic_write(&path, &serde_json::to_vec_pretty(&m)?)
+    atomic_write(&path, &serde_json::to_vec_pretty(&m)?)?;
+    cleanup_temps(&m, allowed)?;
+    remove_operation(&dir)
 }

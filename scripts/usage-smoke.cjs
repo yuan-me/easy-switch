@@ -34,7 +34,20 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));
   db.prepare('INSERT INTO threads VALUES(?,?,?,?,?,?,?)').run(id,names[i]||'合成会话 '+(i+1),'D:\\projects\\easy-switch','openai',file,Math.floor(Date.now()/1000)-i*120,0);
  }db.close();
  fs.writeFileSync(path.join(store,'settings.json'),JSON.stringify({codexHome:home,automaticUpdates:false,automaticDownload:false,theme:'light'}));
- const hashes=()=>Object.fromEntries(fs.readdirSync(path.join(home,'sessions')).map(f=>[f,createHash('sha256').update(fs.readFileSync(path.join(home,'sessions',f))).digest('hex')]));
+ const legacy=path.join(root,'CodexSwitch');
+ fs.writeFileSync(path.join(store,'legacy-store.json'),JSON.stringify(legacy));
+ fs.writeFileSync(path.join(home,'auth.json'),JSON.stringify({OPENAI_API_KEY:'synthetic-unused-key'}));
+ fs.writeFileSync(path.join(home,'config.toml'),'model_provider = "openai"\n');
+ const originalFiles=['state_5.sqlite','auth.json','config.toml'];
+ const originalHashes=()=>Object.fromEntries(originalFiles.map(f=>[f,createHash('sha256').update(fs.readFileSync(path.join(home,f))).digest('hex')]));
+ const originals=originalHashes(),target=path.join(home,'sessions',fs.readdirSync(path.join(home,'sessions'))[0]);
+ for(const base of [store,legacy])for(let i=0;i<8;i++){
+  const dir=path.join(base,'operations','old-'+i);fs.mkdirSync(dir,{recursive:true});
+  fs.writeFileSync(path.join(dir,'manifest.json'),JSON.stringify({State:i===7?'Complete':'RolledBack',Description:'synthetic old operation',Files:[{Path:target,BeforeHash:null,AfterHash:null,Backup:null,Stage:null}]}));
+  for(const suffix of ['before','after','db','jsonl','tmp'])fs.writeFileSync(path.join(dir,'copy.'+suffix),Buffer.alloc(65536));
+ }
+ const staleTemp=path.join(path.dirname(target),'.easy-switch-'+randomUUID()+'.restore');fs.writeFileSync(staleTemp,'synthetic temporary file');
+ const hashes=()=>Object.fromEntries(fs.readdirSync(path.join(home,'sessions')).filter(f=>f.endsWith('.jsonl')).map(f=>[f,createHash('sha256').update(fs.readFileSync(path.join(home,'sessions',f))).digest('hex')]));
  const before=hashes(),port=47848;
  const proc=spawn(exe,['--store',store],{env:{...process.env,WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS:'--remote-debugging-port='+port+' --remote-debugging-address=127.0.0.1'},windowsHide:true,stdio:'ignore'});let browser;
  const captureScript=path.join(out,'capture.ps1');
@@ -83,7 +96,13 @@ $bitmap.Save($Output,[Drawing.Imaging.ImageFormat]::Png);$graphics.Dispose();$bi
   for(let n=0;n<100;n++){try{browser=await chromium.connectOverCDP('http://127.0.0.1:'+port);break}catch{await wait(300)}}
   assert.ok(browser,'Native WebView2 did not start');const page=browser.contexts()[0].pages()[0];page.on('pageerror',e=>report.errors.push(e.message));await page.waitForSelector('h1');
   const invoke=(command,args={})=>page.evaluate(({command,args})=>window.__TAURI_INTERNALS__.invoke(command,args),{command,args});
-  const boot=await invoke('bootstrap');assert.equal(boot.version,'1.2.0');assert.equal(boot.settings.codexHome,home);report.version=boot.version;
+  const boot=await invoke('bootstrap');assert.equal(boot.version,'1.2.1');assert.equal(boot.settings.codexHome,home);report.version=boot.version;
+  assert.equal(boot.cleanupError,null);assert.deepEqual(await invoke('interrupted_operations'),[]);
+  for(const base of [store,legacy])assert.deepEqual(fs.readdirSync(path.join(base,'operations')),[]);
+  assert.equal(fs.existsSync(staleTemp),false);assert.deepEqual(originalHashes(),originals);
+  assert.equal(await page.getByRole('navigation',{name:'主导航'}).getByRole('button').count(),4);
+  assert.equal(await page.getByRole('button',{name:'备份恢复',exact:true}).count(),0);
+  report.checks.push('startup cleans current and legacy operation copies and owned temporary files','four navigation entries without backup page','synthetic database, config and authentication unchanged');
   const starts=Array.from({length:7},(_,i)=>{const d=new Date(monday);d.setDate(d.getDate()+i);return d.getTime()/1000}),end=new Date(monday);end.setDate(end.getDate()+7);
   const data=await invoke('usage_report',{query:{bucketStarts:starts,end:end.getTime()/1000,model:null}});
   assert.equal(data.input,expectedInput);assert.equal(data.output,expectedInput/3);assert.equal(data.cached,expectedInput*.6);assert.equal(data.warnings.length,0);assert.equal(data.scannedFiles,12);
@@ -114,7 +133,7 @@ $bitmap.Save($Output,[Drawing.Imaging.ImageFormat]::Png);$graphics.Dispose();$bi
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
   await page.getByRole('button',{name:'复制线程 ID',exact:true}).click();await page.waitForSelector('.notice');await page.waitForSelector('.notice',{state:'detached',timeout:12000});
   report.checks.push('compact conversation and retained reading position','minimum window footer and overflow','notice expires after ten seconds');
-  assert.deepEqual(hashes(),before);assert.deepEqual(report.errors,[]);report.checks.push('synthetic histories unchanged','no JavaScript errors');
+  assert.deepEqual(hashes(),before);assert.deepEqual(originalHashes(),originals);assert.deepEqual(report.errors,[]);report.checks.push('synthetic histories unchanged','no JavaScript errors');
   report.status='passed';save();console.log(JSON.stringify({status:report.status,version:report.version,checks:report.checks,output:out}));
  }catch(e){report.status='failed';report.error=e.message;save();throw e}
  finally{if(browser){try{const page=browser.contexts()[0].pages()[0];await page.evaluate(()=>window.__TAURI_INTERNALS__.invoke('plugin:window|close'))}catch{}await browser.close()}if(proc.exitCode===null)proc.kill()}

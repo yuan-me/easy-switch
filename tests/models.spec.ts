@@ -16,6 +16,7 @@ async function desktop(page:Page){
    invoke:async(command:string,args:any)=>{
     w.modelCalls.push({command,args});
     if(command==='plugin:event|listen'){listeners.set(args.event,callbacks.get(args.handler)!);return args.handler}
+    if(command==='interrupted_operations')return [];
     if(command==='bootstrap')return {providers:[provider],modelCatalogs:structuredClone(lists),settings,version:'1.1.2',migrationError:null};
     if(command==='window_appearance')return false;
     if(command==='plugin:window|is_maximized')return false;

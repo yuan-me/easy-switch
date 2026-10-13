@@ -90,7 +90,7 @@ fn main() {
             models::refresh_provider_models,
             models::acknowledge_models,
             commands::cancel_operation,
-            commands::list_operations,
+            commands::interrupted_operations,
             commands::restore_operation,
             commands::save_scroll,
             updates::check_update,
@@ -98,7 +98,9 @@ fn main() {
             updates::install_update
         ])
         .setup(|app| {
-            let store = app.state::<commands::AppState>().store.clone();
+            let state = app.state::<commands::AppState>();
+            let store = state.store.clone();
+            *state.cleanup_error.lock().unwrap() = store.cleanup_operations().err().map(commands::err);
             tauri::async_runtime::spawn_blocking(move || {
                 if let (Ok(s), Ok(ps)) = (store.settings(), store.providers()) {
                     if ps

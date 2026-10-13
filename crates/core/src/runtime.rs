@@ -364,7 +364,7 @@ pub fn ensure_started_blocking(store: &Store) -> Result<()> {
                 return Ok(());
             }
         }
-        anyhow::bail!("Runtime 未就绪；可从备份恢复回滚")
+        anyhow::bail!("Runtime 未就绪；请重试或重新切换供应商")
     })
 }
 pub fn stop_blocking(store: &Store) -> Result<()> {

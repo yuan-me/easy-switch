@@ -5,6 +5,7 @@ test('overlapping session refreshes share a request and release it afterwards',a
   Object.assign(window,{isTauri:true,__TAURI_EVENT_PLUGIN_INTERNALS__:{unregisterListener:()=>{}},scanCalls:()=>calls,finishScan:()=>resolveScan({sessions:[],warnings:[]}),__TAURI_INTERNALS__:{
    metadata:{currentWindow:{label:'main'},currentWebview:{label:'main'}},transformCallback:()=>1,
    invoke:async(command:string)=>{
+    if(command==='interrupted_operations')return [];
     if(command==='bootstrap')return {providers:[],settings:{theme:'light',scrollPositions:{}},version:'test',migrationError:null};
     if(command==='scan_sessions'){calls++;return new Promise(resolve=>{resolveScan=resolve})}
     return 1;

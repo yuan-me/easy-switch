@@ -67,6 +67,7 @@ test('long project labels and scrollable menus retain keyboard and high-contrast
   Object.assign(window,{isTauri:true,__TAURI_EVENT_PLUGIN_INTERNALS__:{unregisterListener:()=>{}},__TAURI_INTERNALS__:{
    metadata:{currentWindow:{label:'main'},currentWebview:{label:'main'}},transformCallback:()=>1,
    invoke:async(command:string)=>{
+    if(command==='interrupted_operations')return [];
     if(command==='bootstrap')return {providers:[],settings:{theme:'light',scrollPositions:{}},version:'test',migrationError:null};
     if(command==='scan_sessions')return {sessions:Array.from({length:40},(_,i)=>({id:String(i),title:'Test '+i,cwd:'D:/very-long-project-name-should-not-hide-the-arrow-'+i,updated:0,archived:false})),warnings:[]};
     return null;

@@ -21,8 +21,8 @@ v1.2.0 加快会话与索引修复，新增模型选择、启动及每小时同�
 - 官方登录、混入 API、纯 API、聚合路由；Responses 透传和 Chat Completions 转换；按会话、轮转、权重与故障转移。
 - API / 混入供应商支持默认模型和 Codex 模型勾选；启动及每小时获取列表，保留排除项，新增模型显示 NEW 标签。
 - Sub2API 图片工具兼容开关。使用 `requires_openai_auth=false` 和指定 actor header，保留功能开关；不添加 `image_generation` 配置项。客户端工具注册和实际出图分别验收。
-- 会话搜索、分页、预览、Token 统计、Markdown 导出、归档恢复、Provider 修复、项目关联迁移及可恢复删除。
-- 当前 Windows 用户的 DPAPI 凭证与备份加密；提交日志、摘要校验、外部修改与 SQLite WAL 保护。关闭 Easy Switch 窗口不终止仍在服务的独立 Runtime。
+- 会话搜索、分页、预览、Token 统计、Markdown 导出、归档恢复、Provider 修复、项目关联迁移及永久删除。
+- 当前 Windows 用户的 DPAPI 凭证与操作期间的临时备份加密；提交日志、摘要校验、外部修改与 SQLite WAL 保护。关闭 Easy Switch 窗口不终止仍在服务的独立 Runtime。
 - 系统/浅色/深色主题、Windows 11 云母与统一标题栏；紧凑会话分栏、窗口尺寸与阅读位置保存；普通提示 10 秒自动关闭。
 - 日／周／月 Token 用量、模型筛选和会话排行；统计只读本地历史，异常或缺失记录明确提示。
 - GitHub Releases 签名更新，支持自动下载和手动检查。
@@ -49,9 +49,11 @@ v1.2.0 加快会话与索引修复，新增模型选择、启动及每小时同�
 
 ## 数据与迁移
 
-正式通道使用 `%LOCALAPPDATA%\EasySwitch`，测试通道使用 `%LOCALAPPDATA%\EasySwitchTest`。首次启动会检查旧 `%LOCALAPPDATA%\CodexSwitch`，导入供应商、设置、DPAPI 凭证与备份引用，保留旧目录。必须在原 Windows 用户下执行；DPAPI 不能直接跨账户迁移。
+正式通道使用 `%LOCALAPPDATA%\EasySwitch`，测试通道使用 `%LOCALAPPDATA%\EasySwitchTest`。首次启动会检查旧 `%LOCALAPPDATA%\CodexSwitch`，导入供应商、设置、DPAPI 凭证与旧数据目录引用。必须在原 Windows 用户下执行；DPAPI 不能直接跨账户迁移。
 
-旧备份路径继续指向旧目录，不要手动删除或移动。合成旧格式测试及虚拟机真实旧备份隔离恢复已通过。遇到未完成操作，先恢复再继续；检测到外部改动时不会强制覆盖。
+从 1.2.1 起，更新后首次启动会自动清理当前和已关联旧版目录中已结束的操作副本（Complete、Restored、RolledBack）及尚未提交的 Preparing 暂存；后续操作结束后立即清理，不再保留多轮历史备份。清理涵盖操作目录内的 .before、.after、数据库快照、重写与临时文件，以及清单关联位置中 EasySwitch 专用命名的 .restore 残留；不删除 Codex 会话、数据库、配置和认证文件。
+
+Applying、Restoring 或未知状态的操作仍保留副本，首页仅在存在中断操作时显示恢复提示。清单损坏、文件占用或路径异常会提示并保留相关文件，下次启动重试；外部修改和 SQLite WAL 保护仍然生效。菜单中的“备份恢复”已移除，主动删除会话现在是永久删除，需保留时请使用归档或先导出。
 
 切换操作会正常退出 Codex、备份与修改、校验并重启。请先完成正在生成的任务。项目关联迁移只更新历史会话的目录与项目索引，不移动项目代码。Chat 转换不能承载原生图片、加密历史或原生 compact，会明确报错。
 

@@ -294,9 +294,7 @@ fn duplicate_indexes_rebase_every_projection_once_and_restore() {
             assert_eq!(db.query_row("SELECT next_rollout_byte_offset FROM thread_history_projection_state WHERE thread_id=?1",[&thread],|r|r.get::<_,usize>(0)).unwrap(),bytes.len());
         }
     }
-    let operation = j.dir.file_name().unwrap().to_string_lossy().into_owned();
-    drop(j);
-    easy_switch_core::journal::restore(&store, &operation, &[s.codex_home.clone()]).unwrap();
+    j.rollback().unwrap();
     for (path, bytes) in paths.iter().zip(before) {
         assert_eq!(fs::read(path).unwrap(), bytes);
     }
@@ -405,10 +403,7 @@ fn growth_rebases_revisions_children_and_sqlite_then_restores_exact_bytes() {
         assert_eq!(db.query_row("SELECT rollout_byte_offset FROM thread_turns WHERE thread_id=?1 AND rollout_end_byte_offset IS NULL",[&rollout],|r|r.get::<_,i64>(0)).unwrap(),0);
     }
     drop(db);
-    let operation = j.dir.file_name().unwrap().to_str().unwrap().to_owned();
-    drop(j);
-    easy_switch_core::journal::restore(&store, &operation, &[s.codex_home.clone(), store.clone()])
-        .unwrap();
+    j.rollback().unwrap();
     for (path, expected) in paths.iter().zip(before) {
         assert_eq!(fs::read(path).unwrap(), expected);
     }
@@ -613,10 +608,7 @@ fn inherited_parent_metadata_survives_repair_growth_and_restore() {
     assert_eq!(offsets, (boundary + delta, after.len()));
     drop(db);
     assert_eq!(history::header(&path).unwrap().id, id);
-    let operation = j.dir.file_name().unwrap().to_str().unwrap().to_owned();
-    drop(j);
-    easy_switch_core::journal::restore(&store, &operation, &[s.codex_home.clone(), store.clone()])
-        .unwrap();
+    j.rollback().unwrap();
     assert_eq!(fs::read(path).unwrap(), before);
     assert_eq!(fs::read(projection).unwrap(), projection_before);
 }

@@ -25,6 +25,7 @@ pub struct AppState {
     scanner: Arc<Mutex<core::sessions::Scanner>>,
     usage: Arc<Mutex<core::usage::UsageCache>>,
     migration_error: Option<String>,
+    pub cleanup_error: Mutex<Option<String>>,
 }
 impl AppState {
     pub fn new(store: Store, migration_error: Option<String>) -> Self {
@@ -37,6 +38,7 @@ impl AppState {
             scanner: Arc::new(Mutex::new(Default::default())),
             usage: Arc::new(Mutex::new(Default::default())),
             migration_error,
+            cleanup_error: Mutex::new(None),
         }
     }
     pub fn begin(&self) -> Result<(Busy, CancellationToken)> {
@@ -124,7 +126,7 @@ fn public_settings(mut s: Settings) -> Value {
 }
 #[tauri::command]
 pub fn bootstrap(app: tauri::AppHandle, state: State<AppState>) -> Reply<Value> {
-    ( ||->Result<_>{let providers=state.store.providers()?.into_iter().map(public_provider).collect::<Vec<_>>();Ok(json!({"providers":providers,"modelCatalogs":core::catalog::load(&state.store)?.providers,"settings":public_settings(state.store.settings()?),"version":app.package_info().version.to_string(),"migrationError":state.migration_error,"busy":state.busy.load(Ordering::SeqCst)}))})().map_err(err)
+    ( ||->Result<_>{let providers=state.store.providers()?.into_iter().map(public_provider).collect::<Vec<_>>();Ok(json!({"providers":providers,"modelCatalogs":core::catalog::load(&state.store)?.providers,"settings":public_settings(state.store.settings()?),"version":app.package_info().version.to_string(),"migrationError":state.migration_error,"cleanupError":*state.cleanup_error.lock().unwrap(),"busy":state.busy.load(Ordering::SeqCst)}))})().map_err(err)
 }
 #[tauri::command]
 pub fn reveal_provider_key(state: State<AppState>, id: String) -> Reply<String> {
@@ -369,15 +371,13 @@ pub async fn fetch_models(
     core::diagnostics::models(&provider, &ct).await.map_err(err)
 }
 #[tauri::command]
-pub fn list_operations(state: State<AppState>) -> Reply<Vec<core::journal::OperationInfo>> {
+pub fn interrupted_operations(state: State<AppState>) -> Reply<Vec<core::journal::OperationInfo>> {
     (|| -> Result<_> {
         let mut ops = core::journal::list(&state.store.root.join("operations"), false)?;
-        if let Some(root) = state
-            .store
-            .read::<Option<PathBuf>>("legacy-store.json", None)?
-        {
+        if let Some(root) = state.store.legacy_root()? {
             ops.extend(core::journal::list(&root.join("operations"), true)?);
         }
+        ops.retain(|o| !core::journal::finished(&o.state));
         Ok(ops)
     })()
     .map_err(err)
@@ -419,7 +419,7 @@ pub async fn restore_operation(
         core::runtime::stop_blocking(&store)?;
         let root = if legacy {
             store
-                .read::<Option<PathBuf>>("legacy-store.json", None)?
+                .legacy_root()?
                 .context("未找到旧版备份目录")?
         } else {
             store.root.clone()
