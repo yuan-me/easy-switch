@@ -9,7 +9,11 @@
 - Windows 1.2.1 release EXE 的 14 项隔离原生检查通过：当前/旧版目录各 8 组（7 RolledBack + 1 Complete）操作副本及 EasySwitch 专用 .restore 暂存启动后清空；会话、SQLite、配置和合成认证文件 SHA-256 不变，四项导航可见，无 JavaScript 错误。浅深主题、Mica、窗口控制、最小 940×620 窗口与阅读位置检查通过。结果为合成数据验证，realCodexTouched=false。
 - 原生证据目录：`artifacts/release-1.2.1/native`，报告为 `result.json`，截图为 `usage-webview.png`、`usage-light.png`、`usage-dark.png` 和 `sessions-minimum.png`。
 - 已生成本地安装包 `target/release/bundle/nsis/Easy Switch_1.2.1_x64-setup.exe`（4,999,884 字节）。更新签名、签名版本绑定、篡改拒绝和 EXE/安装包的六尺寸图标检查通过；SHA-256：`cf474c892a1104104206d3d346e6fe3cf21852bc7d836b3e431e9905d254b1d1`。
-- 尚未执行本机覆盖安装、自动更新安装、另一台用户电脑验收或正式发布；没有宣称用户报告的 33.45 GiB 已实际释放。
+- 正式标签 `v1.2.1` 指向 `d99bb4576f7cadd59373733af25f11c2c0f88d48`；[Check](https://github.com/yuan-me/easy-switch/actions/runs/38368055452) 与 [Release](https://github.com/yuan-me/easy-switch/actions/runs/38368056076) 均成功，云端再次通过 125 项 Rust 测试和 30 项界面测试。
+- 云端安装包签名、版本绑定、篡改拒绝及 EXE/安装包六尺寸图标检查通过；从安装包直接解压的 1.2.1 程序再次通过全部 14 项隔离原生检查，确认首次启动清理 16 组旧操作副本和专用暂存文件，原始数据摘要不变。报告为 `artifacts/release-1.2.1/cloud-native/result.json`。
+- [v1.2.1](https://github.com/yuan-me/easy-switch/releases/tag/v1.2.1) 已公开并设为最新正式版。匿名访问正式更新地址取得 1.2.1，两种 Windows 平台 URL/签名与验证包一致；清单、签名及完整安装包均返回 HTTP 200。公开安装包为 5,017,652 字节，SHA-256：`5193a72fb6e02a950642944aa0fa25e64c4a40e95d29d2dae56ff8627a494ca5`。证据为 `artifacts/release-1.2.1/public-verification.json`。
+- 从已核对公开包摘要的 1.2.0 安装包解压旧版程序，以隔离数据启用自动检查和自动下载；定时更新流程自动发现 1.2.1、下载并通过验签，显示“更新已就绪”，中文更新说明可读。报告为 `artifacts/release-1.2.1/old-updater-result.json`，没有执行安装。
+- 尚未执行本机覆盖安装、自动更新安装或另一台用户电脑验收；没有宣称用户报告的 33.45 GiB 已实际释放。
 
 ## 1.1.2 正式发布（2026-10-09）
 
