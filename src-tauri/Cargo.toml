@@ -1,6 +1,6 @@
 [package]
 name = "easy-switch"
-version = "1.2.1"
+version = "1.3.0"
 edition = "2024"
 default-run = "easy-switch"
 
@@ -16,7 +16,6 @@ easy-switch-core = { path = "../crates/core" }
 tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
 tauri-plugin-updater = "2"
-tauri-plugin-window-state = "2"
 tauri-plugin-single-instance = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

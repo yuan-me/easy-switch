@@ -1,3 +1,4 @@
+import {setTheme} from './helpers';
 import {test,expect} from '@playwright/test';
 test('overlapping session refreshes share a request and release it afterwards',async({page})=>{
  await page.addInitScript(()=>{
@@ -5,6 +6,7 @@ test('overlapping session refreshes share a request and release it afterwards',a
   Object.assign(window,{isTauri:true,__TAURI_EVENT_PLUGIN_INTERNALS__:{unregisterListener:()=>{}},scanCalls:()=>calls,finishScan:()=>resolveScan({sessions:[],warnings:[]}),__TAURI_INTERNALS__:{
    metadata:{currentWindow:{label:'main'},currentWebview:{label:'main'}},transformCallback:()=>1,
    invoke:async(command:string)=>{
+    if(command==='usage_report')return {input:0,output:0,cached:null,buckets:[],models:[],sessions:[],availableModels:[],warnings:[],scannedFiles:0};
     if(command==='interrupted_operations')return [];
     if(command==='bootstrap')return {providers:[],settings:{theme:'light',scrollPositions:{}},version:'test',migrationError:null};
     if(command==='scan_sessions'){calls++;return new Promise(resolve=>{resolveScan=resolve})}
@@ -23,21 +25,21 @@ test('overlapping session refreshes share a request and release it afterwards',a
  await expect(page.getByRole('button',{name:'刷新',exact:true})).toBeEnabled();
 });
 test('provider navigation, search, themes, editor and minimum viewport',async({page})=>{
- const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));await page.goto('/');await expect(page.getByRole('heading',{name:'供应商',exact:true})).toBeVisible();await expect(page.locator('.provider-card')).toHaveCount(4);
- await page.getByLabel('浅色',{exact:true}).click();await page.screenshot({animations:'disabled',path:'artifacts/screenshots/providers-light.png',fullPage:true});
+ const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));await page.goto('/');await page.getByRole('button',{name:'供应商',exact:true}).click();await expect(page.getByRole('heading',{name:'供应商',exact:true})).toBeVisible();await expect(page.locator('.provider-card')).toHaveCount(4);
+ await setTheme(page,'浅色');await page.screenshot({animations:'disabled',path:'artifacts/screenshots/providers-light.png',fullPage:true});
  await page.getByLabel('搜索供应商').fill('Sub2API');await expect(page.locator('.provider-card')).toHaveCount(1);await page.getByRole('button',{name:'设置',exact:true}).click();await page.getByRole('button',{name:'供应商',exact:true}).click();await expect(page.getByLabel('搜索供应商')).toHaveValue('Sub2API');await page.getByLabel('搜索供应商').fill('');
  await page.getByRole('button',{name:'添加供应商',exact:true}).click();await expect(page.getByRole('dialog')).toBeVisible();await page.getByLabel('显示名称',{exact:true}).fill('测试供应商');await page.getByText('高级设置',{exact:true}).click();await page.getByLabel('Sub2API 图片工具兼容').check();await expect(page.getByLabel('Sub2API 图片工具兼容')).toBeChecked();await page.screenshot({animations:'disabled',path:'artifacts/screenshots/provider-editor.png',fullPage:true});await page.keyboard.press('Escape');await expect(page.getByRole('dialog')).not.toBeVisible();
- await page.getByLabel('深色',{exact:true}).click();await expect(page.locator('html')).toHaveAttribute('data-theme','dark');await page.screenshot({animations:'disabled',path:'artifacts/screenshots/providers-dark.png',fullPage:true});
+ await setTheme(page,'深色');await expect(page.locator('html')).toHaveAttribute('data-theme','dark');await page.screenshot({animations:'disabled',path:'artifacts/screenshots/providers-dark.png',fullPage:true});
  await page.getByRole('button',{name:'会话',exact:true}).click();await expect(page.getByText('选择一个会话',{exact:true})).toBeVisible();await page.screenshot({animations:'disabled',path:'artifacts/screenshots/sessions-dark.png',fullPage:true});
  await page.getByRole('button',{name:'设置',exact:true}).click();await expect(page.getByRole('heading',{name:'软件更新',exact:true})).toBeVisible();await page.screenshot({animations:'disabled',path:'artifacts/screenshots/settings-dark.png',fullPage:true});
- await page.setViewportSize({width:940,height:620});await page.getByLabel('浅色',{exact:true}).click();await page.getByRole('button',{name:'供应商',exact:true}).click();await page.screenshot({animations:'disabled',path:'artifacts/screenshots/providers-min.png',fullPage:true});
+ await page.setViewportSize({width:940,height:620});await setTheme(page,'浅色');await page.getByRole('button',{name:'供应商',exact:true}).click();await page.screenshot({animations:'disabled',path:'artifacts/screenshots/providers-min.png',fullPage:true});
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);expect(errors).toEqual([]);
 });
-test('each scale remains usable and keyboard focus is visible',async({browser})=>{for(const scale of [1,1.25,1.5,2]){const context=await browser.newContext({viewport:{width:1120,height:780},deviceScaleFactor:scale,colorScheme:'light'});const page=await context.newPage();await page.goto('/');await expect(page.getByRole('heading',{name:'供应商',exact:true})).toBeVisible();await page.keyboard.press('Tab');expect(await page.evaluate(()=>document.activeElement?.tagName)).toBe('BUTTON');await page.screenshot({animations:'disabled',path:`artifacts/screenshots/providers-scale-${scale}.png`});await context.close();}});
+test('each scale remains usable and keyboard focus is visible',async({browser})=>{for(const scale of [1,1.25,1.5,2]){const context=await browser.newContext({viewport:{width:1120,height:780},deviceScaleFactor:scale,colorScheme:'light'});const page=await context.newPage();await page.goto('/');await page.getByRole('button',{name:'供应商',exact:true}).click();await expect(page.getByRole('heading',{name:'供应商',exact:true})).toBeVisible();await page.keyboard.press('Tab');expect(await page.evaluate(()=>document.activeElement?.tagName)).toBe('BUTTON');await page.screenshot({animations:'disabled',path:`artifacts/screenshots/providers-scale-${scale}.png`});await context.close();}});
 
 test('main scrollbar hides after wheel and keyboard scrolling without shifting content',async({page})=>{
  await page.setViewportSize({width:940,height:620});await page.goto('/');
- await expect(page.locator('.provider-card')).toHaveCount(4);
+ await page.getByRole('button',{name:'供应商',exact:true}).click();await expect(page.locator('.provider-card')).toHaveCount(4);
  const main=page.locator('main');
  await expect(main).toHaveCSS('scrollbar-color','rgba(0, 0, 0, 0) rgba(0, 0, 0, 0)');
  const width=await main.evaluate(el=>el.clientWidth);

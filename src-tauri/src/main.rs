@@ -1,16 +1,12 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 mod commands;
 mod models;
+mod window_layout;
 #[cfg(test)]
 mod updater_tests;
 mod updates;
 use easy_switch_core::Store;
 use tauri::Manager;
-const WINDOW_STATE_FLAGS: tauri_plugin_window_state::StateFlags =
-    tauri_plugin_window_state::StateFlags::all().difference(
-        tauri_plugin_window_state::StateFlags::DECORATIONS
-            .union(tauri_plugin_window_state::StateFlags::VISIBLE),
-    );
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     let root = args
@@ -60,12 +56,6 @@ fn main() {
             }
         }))
         .plugin(tauri_plugin_dialog::init())
-        .plugin(
-            tauri_plugin_window_state::Builder::default()
-                // Restore geometry while hidden; the styled frontend reveals the window.
-                .with_state_flags(WINDOW_STATE_FLAGS)
-                .build(),
-        )
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(state)
         .manage(updates::UpdateState::default())
@@ -130,13 +120,13 @@ fn main() {
 #[cfg(test)]
 mod startup_tests {
     #[test]
-    fn restore_geometry_without_revealing_an_unpainted_window() {
-        use tauri_plugin_window_state::StateFlags;
-        assert!(!super::WINDOW_STATE_FLAGS.intersects(StateFlags::VISIBLE | StateFlags::DECORATIONS));
-        assert!(super::WINDOW_STATE_FLAGS.contains(StateFlags::SIZE | StateFlags::POSITION | StateFlags::MAXIMIZED));
+    fn startup_geometry_is_computed_before_revealing_the_window() {
         for config in [include_str!("../tauri.conf.json"), include_str!("../tauri.test.conf.json")] {
             let config: serde_json::Value = serde_json::from_str(config).unwrap();
             assert_eq!(config["app"]["windows"][0]["visible"], false);
+            for key in ["width", "height", "minWidth", "minHeight", "maximized", "fullscreen"] {
+                assert!(config["app"]["windows"][0].get(key).is_none(), "fixed startup {key}");
+            }
         }
     }
 }

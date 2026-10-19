@@ -1,4 +1,5 @@
 use crate::commands::{AppState, err};
+use easy_switch_core::desktop::{Desktop, DesktopHost};
 use serde_json::{Value, json};
 use std::sync::Mutex;
 use tauri::{Emitter, Manager};
@@ -72,12 +73,19 @@ pub async fn download_update(app: tauri::AppHandle) -> Result<Value, String> {
 pub async fn install_update(app: tauri::AppHandle) -> Result<(), String> {
     let state = app.state::<UpdateState>();
     let _update_guard = state.gate.try_lock().map_err(|_| "更新操作正在进行")?;
+    let update = state
+        .pending
+        .lock()
+        .unwrap()
+        .clone()
+        .ok_or("请先检查更新")?;
+    if state.download.lock().unwrap().is_none() {
+        return Err("请先下载更新".into());
+    }
     let app_state = app.state::<AppState>();
     let (_busy, _) = app_state.begin().map_err(err)?;
     let store = app_state.store.clone();
-    if !easy_switch_core::desktop::Desktop::writers().is_empty() {
-        return Err("请先正常退出 Codex，避免更新期间出现新的会话写入".into());
-    }
+    let settings = store.settings().map_err(err)?;
     if let Some(health) = easy_switch_core::runtime::health_check(&store)
         .await
         .map_err(err)?
@@ -86,17 +94,19 @@ pub async fn install_update(app: tauri::AppHandle) -> Result<(), String> {
             return Err("代理仍在处理请求，请空闲后安装".into());
         }
     }
-    // Shutdown is authoritative and rejects a request racing the health check.
-    tauri::async_runtime::spawn_blocking(move || easy_switch_core::runtime::stop_blocking(&store))
-        .await
-        .map_err(|e| e.to_string())?
-        .map_err(err)?;
-    let update = state
-        .pending
-        .lock()
-        .unwrap()
-        .clone()
-        .ok_or("请先检查更新")?;
+    // Only the confirmed install command closes Codex; failed shutdown keeps the download.
+    tauri::async_runtime::spawn_blocking(move || -> easy_switch_core::Result<()> {
+        if !Desktop::writers().is_empty() {
+            Desktop::resolve(settings)?.stop()?;
+        }
+        Desktop::ensure_stopped()?;
+        // Runtime shutdown also rejects requests racing the earlier health check.
+        easy_switch_core::runtime::stop_blocking(&store)?;
+        Desktop::ensure_stopped()
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(err)?;
     let data = state
         .download
         .lock()

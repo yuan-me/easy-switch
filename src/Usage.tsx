@@ -4,24 +4,11 @@ import {ChevronLeft,ChevronRight,RefreshCw,Loader2} from 'lucide-react';
 import {call} from './api';
 import type {UsageReport,UsageShare} from './types';
 
-type Period='day'|'week'|'month';
+import {localDate,periodRange,type Period} from './usageRange';
+export {periodRange} from './usageRange';
 const number=new Intl.NumberFormat('zh-CN');
 const compact=new Intl.NumberFormat('en',{notation:'compact',maximumFractionDigits:2});
 const total=(v:{input:number;output:number})=>v.input+v.output;
-function localDate(d:Date){return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-')}
-export function periodRange(date:string,period:Period){
- const start=new Date(date+'T00:00:00');
- if(period==='week')start.setDate(start.getDate()-(start.getDay()+6)%7);
- if(period==='month')start.setDate(1);
- const end=new Date(start);
- if(period==='month')end.setMonth(end.getMonth()+1);else end.setDate(end.getDate()+(period==='week'?7:1));
- const starts:number[]=[];
- for(let d=new Date(start);d<end;){
-  starts.push(d.getTime()/1000);
-  if(period==='day')d=new Date(d.getTime()+3600000);else d.setDate(d.getDate()+1);
- }
- return {start,end,bucketStarts:starts};
-}
 export default function Usage({onSession}:{onSession:(id:string)=>void}){
  const [period,setPeriod]=useState<Period>('week'),[date,setDate]=useState(()=>localDate(new Date())),[model,setModel]=useState(''),[revision,setRevision]=useState(0);
  const [report,setReport]=useState<UsageReport|null>(null),[loading,setLoading]=useState(true),[error,setError]=useState(''),[allSessions,setAllSessions]=useState(false);

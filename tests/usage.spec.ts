@@ -27,6 +27,7 @@ test('usage periods, model filtering, session navigation and timed notifications
  await page.getByRole('button',{name:'月',exact:true}).click();await expect(page.locator('.usage-column')).toHaveCount(31);
  await page.getByLabel('统计模型').selectOption('模型 A');await expect(page.getByTestId('usage-total')).toHaveText('600K');
  await page.setViewportSize({width:940,height:620});
+ expect(await page.locator('.usage-chart').evaluate(el=>[...el.querySelectorAll('.usage-tick')].every(t=>t.getBoundingClientRect().bottom<=el.getBoundingClientRect().bottom))).toBe(true);
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
  await page.screenshot({animations:'disabled',path:'artifacts/screenshots/islands-usage-min.png'});
  await page.getByRole('button',{name:'界面优化讨论',exact:true}).click();

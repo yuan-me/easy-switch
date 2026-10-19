@@ -203,6 +203,8 @@ pub struct Settings {
     #[serde(alias = "EnablePageRecovery")]
     pub enable_page_recovery: bool,
     pub theme: String,
+    pub accent_color: String,
+    pub color_style: String,
     pub automatic_updates: bool,
     pub automatic_download: bool,
 }
@@ -224,9 +226,19 @@ impl Default for Settings {
             scroll_positions: BTreeMap::new(),
             enable_page_recovery: false,
             theme: "system".into(),
+            accent_color: "#007acc".into(),
+            color_style: "vivid".into(),
             automatic_updates: true,
             automatic_download: true,
         }
+    }
+}
+impl Settings {
+    pub fn validate_appearance(&self) -> Result<()> {
+        ensure!(self.accent_color.len() == 7 && self.accent_color.starts_with('#')
+            && self.accent_color.as_bytes()[1..].iter().all(u8::is_ascii_hexdigit), "主题颜色须为六位十六进制颜色");
+        ensure!(matches!(self.color_style.as_str(), "vivid" | "soft"), "配色风格无效");
+        Ok(())
     }
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]

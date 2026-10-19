@@ -6,15 +6,12 @@
       {
         "label": "main",
         "title": "Easy Switch · 测试通道",
-        "width": 1280,
-        "height": 900,
-        "minWidth": 940,
-        "minHeight": 620,
+        "preventOverflow": true,
         "center": true,
         "visible": false,
         "decorations": false,
         "transparent": true,
-        "backgroundColor": "#f2f6fc",
+        "backgroundColor": "#f3eff4",
         "shadow": true
       }
     ]

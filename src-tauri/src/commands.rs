@@ -75,6 +75,7 @@ type Reply<T> = std::result::Result<T, String>;
 #[tauri::command]
 pub fn window_ready(window: tauri::WebviewWindow, state: State<AppState>) -> Reply<()> {
     if !state.window_ready.load(Ordering::SeqCst) {
+        crate::window_layout::apply(&window).map_err(|e| e.to_string())?;
         window.show().map_err(|e| e.to_string())?;
         state.window_ready.store(true, Ordering::SeqCst);
         window.set_focus().map_err(|e| e.to_string())?;
@@ -98,9 +99,9 @@ pub fn window_appearance(window: tauri::WebviewWindow, dark: bool, system: bool)
     let color = if mica {
         tauri::window::Color(0, 0, 0, 0)
     } else if dark {
-        tauri::window::Color(20, 28, 41, 255)
+        tauri::window::Color(33, 30, 37, 255)
     } else {
-        tauri::window::Color(242, 246, 252, 255)
+        tauri::window::Color(243, 239, 244, 255)
     };
     window
         .set_background_color(Some(color))
@@ -167,6 +168,7 @@ pub fn save_settings(state: State<AppState>, mut settings: Settings) -> Reply<()
             "主题选项无效"
         );
         ensure!(settings.runtime_port >= 1024, "代理端口须至少为 1024");
+        settings.validate_appearance()?;
         core::sessions::normalize(&settings.codex_home)?;
         core::sessions::no_links(&settings.codex_home)?;
         if let Some(p) = &settings.sqlite_home {

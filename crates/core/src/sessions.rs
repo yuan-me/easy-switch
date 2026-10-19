@@ -236,6 +236,10 @@ impl Scanner {
                 while let Some(r) = rows.next()? {
                     cancellation(ct)?;
                     let p = owned(&PathBuf::from(r.get::<_, String>(4)?), settings)?;
+                    // Codex can retain indexes after rollout removal; leave those records untouched.
+                    if !p.try_exists()? {
+                        continue;
+                    }
                     let t: i64 = r.get(5)?;
                     items.push(Session {
                         id: r.get(0)?,

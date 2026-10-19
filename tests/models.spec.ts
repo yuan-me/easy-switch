@@ -1,3 +1,4 @@
+import {setTheme} from './helpers';
 import {test,expect,type Page} from '@playwright/test';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
@@ -16,6 +17,8 @@ async function desktop(page:Page){
    invoke:async(command:string,args:any)=>{
     w.modelCalls.push({command,args});
     if(command==='plugin:event|listen'){listeners.set(args.event,callbacks.get(args.handler)!);return args.handler}
+    if(command==='usage_report')return {input:0,output:0,cached:null,buckets:[],models:[],sessions:[],availableModels:[],warnings:[],scannedFiles:0};
+    if(command==='scan_sessions')return {sessions:[],warnings:[]};
     if(command==='interrupted_operations')return [];
     if(command==='bootstrap')return {providers:[provider],modelCatalogs:structuredClone(lists),settings,version:'1.1.2',migrationError:null};
     if(command==='window_appearance')return false;
@@ -31,7 +34,7 @@ async function desktop(page:Page){
   }});
  });
  await page.goto('/');
- await expect(page.getByRole('heading',{name:'供应商',exact:true})).toBeVisible();
+ await page.getByRole('button',{name:'供应商',exact:true}).click();await expect(page.getByRole('heading',{name:'供应商',exact:true})).toBeVisible();
 }
 
 test('new-model badge is a label and editing persists model choices',async({page})=>{
@@ -57,10 +60,10 @@ test('new-model badge is a label and editing persists model choices',async({page
  await expect(page.locator('.model-notice')).toHaveCount(0);
  await page.evaluate(()=>(window as any).newModel());
  await expect(page.locator('.model-notice')).toContainText('gpt-new');
- await page.getByLabel('深色',{exact:true}).click();
+ await setTheme(page,'深色');
  await page.setViewportSize({width:940,height:620});
  await expect(page.locator('html')).toHaveAttribute('data-theme','dark');
- await expect(page.locator('.provider-card')).toHaveCSS('background-color','rgb(31, 39, 52)');
+ await expect(page.locator('.provider-card')).toHaveCSS('background-color','rgb(44, 39, 50)');
  await page.screenshot({animations:'disabled',path:join(tmpdir(),'easy-switch-models-dark-min.png')});
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
  expect(errors).toEqual([]);
@@ -122,7 +125,7 @@ test('model search stays inline and nested scrollbars appear only during scrolli
   await search.fill('test-model-01');await expect(choices.locator('.model-choice')).toHaveCount(1);
   await page.keyboard.press('Escape');
  }
- await page.getByLabel('深色',{exact:true}).click();await page.getByRole('button',{name:'编辑',exact:true}).click();
+ await setTheme(page,'深色');await page.getByRole('button',{name:'编辑',exact:true}).click();
  await page.getByLabel('搜索模型').scrollIntoViewIfNeeded();
  await page.screenshot({animations:'disabled',path:join(tmpdir(),'easy-switch-islands-editor-dark-min.png')});
  await page.emulateMedia({forcedColors:'active'});
@@ -132,8 +135,8 @@ test('model search stays inline and nested scrollbars appear only during scrolli
 
 test('model dropdown matches other menus while allowing a custom model ID',async({page})=>{
  await desktop(page);await page.setViewportSize({width:940,height:620});
- for(const [theme,color] of [['浅色','rgb(255, 255, 255)'],['深色','rgb(31, 39, 52)']]){
-  await page.getByLabel(theme,{exact:true}).click();await page.getByRole('button',{name:'编辑',exact:true}).click();
+ for(const [theme,color] of [['浅色','rgb(255, 252, 255)'],['深色','rgb(44, 39, 50)']]){
+  await setTheme(page,theme);await page.getByRole('button',{name:'编辑',exact:true}).click();
   const dialog=page.getByRole('dialog'),models=dialog.getByLabel('选择默认模型');
   await expect(models.locator('selectedcontent')).toHaveCSS('display','none');
   await models.click();
@@ -222,7 +225,7 @@ test('editor is centered and grouped with two model columns at desktop and minim
  const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
  await desktop(page);
  for(const [theme,width,height] of [['浅色',1120,780],['深色',940,620]] as const){
-  await page.setViewportSize({width,height});await page.getByLabel(theme,{exact:true}).click();
+  await page.setViewportSize({width,height});await setTheme(page,theme);
   await page.getByRole('button',{name:'编辑',exact:true}).click();
   const dialog=page.getByRole('dialog');
   await expect(dialog.getByRole('heading',{name:'基本信息'})).toBeVisible();
@@ -236,7 +239,7 @@ test('editor is centered and grouped with two model columns at desktop and minim
   const connection=dialog.locator('section').filter({has:page.getByRole('heading',{name:'连接设置'})});
   const basicBox=await basic.boundingBox(),connectionBox=await connection.boundingBox();
   expect(connectionBox!.y).toBeGreaterThanOrEqual(basicBox!.y+basicBox!.height);
-  await expect(connection).toHaveCSS('border-width','1px');
+  await expect(connection).toHaveCSS('border-width','0px');
   const protocol=await dialog.getByLabel('协议').boundingBox(),address=await dialog.getByLabel('API 地址').boundingBox(),key=await dialog.getByLabel('API Key',{exact:true}).boundingBox();
   expect(Math.abs(protocol!.y-address!.y)).toBeLessThan(1);expect(address!.x).toBeGreaterThan(protocol!.x);
   expect(key!.y).toBeGreaterThan(address!.y);expect(key!.width).toBeGreaterThan(address!.width);

@@ -96,13 +96,13 @@ $bitmap.Save($Output,[Drawing.Imaging.ImageFormat]::Png);$graphics.Dispose();$bi
   for(let n=0;n<100;n++){try{browser=await chromium.connectOverCDP('http://127.0.0.1:'+port);break}catch{await wait(300)}}
   assert.ok(browser,'Native WebView2 did not start');const page=browser.contexts()[0].pages()[0];page.on('pageerror',e=>report.errors.push(e.message));await page.waitForSelector('h1');
   const invoke=(command,args={})=>page.evaluate(({command,args})=>window.__TAURI_INTERNALS__.invoke(command,args),{command,args});
-  const boot=await invoke('bootstrap');assert.equal(boot.version,'1.2.1');assert.equal(boot.settings.codexHome,home);report.version=boot.version;
+  const boot=await invoke('bootstrap');assert.equal(boot.version,JSON.parse(fs.readFileSync(path.join(__dirname,'../src-tauri/tauri.conf.json'),'utf8')).version);assert.equal(boot.settings.codexHome,home);report.version=boot.version;
   assert.equal(boot.cleanupError,null);assert.deepEqual(await invoke('interrupted_operations'),[]);
   for(const base of [store,legacy])assert.deepEqual(fs.readdirSync(path.join(base,'operations')),[]);
   assert.equal(fs.existsSync(staleTemp),false);assert.deepEqual(originalHashes(),originals);
-  assert.equal(await page.getByRole('navigation',{name:'主导航'}).getByRole('button').count(),4);
+  assert.equal(await page.getByRole('navigation',{name:'主导航'}).getByRole('button').count(),5);
   assert.equal(await page.getByRole('button',{name:'备份恢复',exact:true}).count(),0);
-  report.checks.push('startup cleans current and legacy operation copies and owned temporary files','four navigation entries without backup page','synthetic database, config and authentication unchanged');
+  report.checks.push('startup cleans current and legacy operation copies and owned temporary files','five navigation entries including dashboard','synthetic database, config and authentication unchanged');
   const starts=Array.from({length:7},(_,i)=>{const d=new Date(monday);d.setDate(d.getDate()+i);return d.getTime()/1000}),end=new Date(monday);end.setDate(end.getDate()+7);
   const data=await invoke('usage_report',{query:{bucketStarts:starts,end:end.getTime()/1000,model:null}});
   assert.equal(data.input,expectedInput);assert.equal(data.output,expectedInput/3);assert.equal(data.cached,expectedInput*.6);assert.equal(data.warnings.length,0);assert.equal(data.scannedFiles,12);
@@ -116,8 +116,8 @@ $bitmap.Save($Output,[Drawing.Imaging.ImageFormat]::Png);$graphics.Dispose();$bi
   await page.getByRole('button',{name:'月',exact:true}).click();await wait(300);assert.ok(await page.locator('.usage-column').count()>=28);
   await page.getByRole('button',{name:'日',exact:true}).click();await wait(300);assert.ok([23,24,25].includes(await page.locator('.usage-column').count()));
   await page.getByRole('button',{name:'周',exact:true}).click();await wait(300);
-  await page.getByLabel('深色',{exact:true}).click();await wait(400);report.dark=capture('usage-dark');assert.equal(await page.locator('html').getAttribute('data-theme'),'dark');
-  await page.getByLabel('浅色',{exact:true}).click();await wait(300);
+  await page.getByRole('button',{name:'设置',exact:true}).click();await page.getByRole('button',{name:'深色',exact:true}).click();await page.getByTestId('settings-save-state').filter({hasText:'已自动保存'}).waitFor();await page.getByRole('button',{name:'Token 统计',exact:true}).click();await wait(400);report.dark=capture('usage-dark');assert.equal(await page.locator('html').getAttribute('data-theme'),'dark');
+  await page.getByRole('button',{name:'设置',exact:true}).click();await page.getByRole('button',{name:'浅色',exact:true}).click();await page.getByTestId('settings-save-state').filter({hasText:'已自动保存'}).waitFor();await page.getByRole('button',{name:'Token 统计',exact:true}).click();await wait(300);
   await page.getByRole('button',{name:'最大化',exact:true}).click();await wait(300);assert.equal(await invoke('plugin:window|is_maximized'),true);
   await page.getByRole('button',{name:'还原窗口',exact:true}).click();await wait(300);assert.equal(await invoke('plugin:window|is_maximized'),false);
   await page.locator('.titlebar-drag').dispatchEvent('mousedown',{button:0,detail:2});await wait(300);assert.equal(await invoke('plugin:window|is_maximized'),true);

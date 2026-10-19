@@ -163,15 +163,14 @@ fn ten_thousand_indexed_sessions_scan_without_reading_bodies() {
     let mut c = rusqlite::Connection::open(path).unwrap();
     let tx = c.transaction().unwrap();
     for i in 0..9999 {
+        let rollout = f.settings.codex_home.join("sessions").join(format!("synthetic-{i}.jsonl"));
+        // Existing but invalid bodies prove the indexed scan does not parse them.
+        fs::write(&rollout, b"body must not be read").unwrap();
         tx.execute(
             "INSERT INTO threads VALUES(?1,'Benchmark','D:/old','a',?2,1000,0,NULL,'keep')",
             rusqlite::params![
                 format!("synthetic-{i}"),
-                f.settings
-                    .codex_home
-                    .join("sessions")
-                    .join(format!("synthetic-{i}.jsonl"))
-                    .to_string_lossy()
+                rollout.to_string_lossy()
             ],
         )
         .unwrap();
@@ -1306,6 +1305,59 @@ struct FakeHost {
     starts: AtomicUsize,
     fail: bool,
 }
+#[test]
+fn switch_ignores_missing_rollout_indexes_without_deleting_records() {
+    for live_session in [true, false] {
+        let f = fixture();
+        let database = db(&f);
+        let missing = f.file.with_file_name("removed.jsonl");
+        let c = rusqlite::Connection::open(&database).unwrap();
+        c.execute(
+            "INSERT INTO threads VALUES('removed','Old','D:/old','a',?1,999,1,NULL,'retain')",
+            [missing.to_string_lossy().as_ref()],
+        ).unwrap();
+        drop(c);
+        let mirror = f.settings.codex_home.join("state_6.sqlite");
+        fs::copy(&database, &mirror).unwrap();
+        if !live_session { fs::remove_file(&f.file).unwrap(); }
+        let p = api("b");
+        f.store.save("providers.json", &vec![p.clone()]).unwrap();
+        let host = FakeHost { stops: AtomicUsize::new(0), starts: AtomicUsize::new(0), fail: false };
+        service::switch(&f.store, &p, &host, &CancellationToken::new(), |_| {}).unwrap();
+        assert_eq!(host.starts.load(Ordering::SeqCst), 1);
+        assert_eq!(scan(&f).len(), usize::from(live_session));
+        assert_eq!(f.store.settings().unwrap().active_provider_id.as_deref(), Some("b"));
+        for path in [&database, &mirror] {
+            let c = rusqlite::Connection::open(path).unwrap();
+            let stale: (String, String, String) = c.query_row(
+                "SELECT rollout_path,model_provider,unknown FROM threads WHERE id='removed'", [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            ).unwrap();
+            assert_eq!(stale, (missing.to_string_lossy().into_owned(), "a".into(), "retain".into()));
+            let provider: String = c.query_row("SELECT model_provider FROM threads WHERE id=?1", [&f.id], |r| r.get(0)).unwrap();
+            assert_eq!(provider, if live_session { "b" } else { "a" });
+        }
+        assert!(!missing.exists());
+        if live_session {
+            assert!(fs::read_to_string(&f.file).unwrap().contains("old model_provider=a"));
+            assert_eq!(scan(&f)[0].provider, "b");
+        } else { assert!(!f.file.exists()); }
+    }
+}
+
+#[test]
+fn rollout_removed_after_scan_still_blocks_changes() {
+    let f = fixture();
+    let database = db(&f);
+    let rows = scan(&f);
+    let before = fs::read(&database).unwrap();
+    fs::remove_file(&f.file).unwrap();
+    let mut j = Journal::new(&f.store.root, "concurrent removal").unwrap();
+    let error = stage_changes(&mut j, &f.settings, &rows, "provider", Some("b"), &CancellationToken::new()).unwrap_err();
+    assert!(error.to_string().contains("会话文件不存在"));
+    assert_eq!(fs::read(&database).unwrap(), before);
+}
+
 impl DesktopHost for FakeHost {
     fn stop(&self) -> Result<()> {
         self.stops.fetch_add(1, Ordering::SeqCst);

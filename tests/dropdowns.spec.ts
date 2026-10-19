@@ -1,3 +1,4 @@
+import {setTheme} from './helpers';
 import {test,expect,type Page,type Locator} from '@playwright/test';
 
 async function inspectPicker(page:Page,field:Locator,name:string,color:string){
@@ -15,10 +16,10 @@ async function inspectPicker(page:Page,field:Locator,name:string,color:string){
  await expect(field).toBeFocused();
 }
 
-for(const [theme,color] of [['浅色','rgb(255, 255, 255)'],['深色','rgb(31, 39, 52)']])test(`all selection menus share their surface and fit the minimum window: ${theme}`,async({page})=>{
+for(const [theme,color] of [['浅色','rgb(255, 252, 255)'],['深色','rgb(44, 39, 50)']])test(`all selection menus share their surface and fit the minimum window: ${theme}`,async({page})=>{
  const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
  await page.setViewportSize({width:940,height:620});await page.goto('/');
- await expect(page.locator('.provider-card')).toHaveCount(4);await page.getByLabel(theme,{exact:true}).click();
+ await page.getByRole('button',{name:'供应商',exact:true}).click();await expect(page.locator('.provider-card')).toHaveCount(4);await setTheme(page,theme);
  const card=page.locator('.provider-card').filter({has:page.getByRole('heading',{name:'Sub2API'})});
  await card.getByRole('button',{name:'编辑',exact:true}).click();
  const dialog=page.getByRole('dialog'),mode=dialog.getByLabel('认证模式');
@@ -30,7 +31,7 @@ for(const [theme,color] of [['浅色','rgb(255, 255, 255)'],['深色','rgb(31, 3
  const official=page.locator('.provider-card').filter({has:page.getByRole('heading',{name:'OpenAI 官方',exact:true})});
  await official.getByRole('button',{name:'编辑',exact:true}).click();await expect(dialog.getByLabel('认证模式')).toBeDisabled();await page.keyboard.press('Escape');
  await card.locator('summary').click();
- await expect(card.locator('.card-menu>div')).toHaveCSS('background-color',color);await expect(card.locator('.card-menu>div')).toHaveCSS('border-radius','10px');await card.locator('summary').click();
+ await expect(card.locator('.card-menu>div')).toHaveCSS('background-color',color);await expect(card.locator('.card-menu>div')).toHaveCSS('border-radius','14px');await card.locator('summary').click();
  await page.getByRole('button',{name:'会话',exact:true}).click();
  await inspectPicker(page,page.getByLabel('项目筛选'),theme+'-project',color);
  await inspectPicker(page,page.getByLabel('会话状态筛选'),theme+'-status',color);
@@ -38,12 +39,12 @@ for(const [theme,color] of [['浅色','rgb(255, 255, 255)'],['深色','rgb(31, 3
  await page.getByRole('button',{name:'Token 统计',exact:true}).click();await expect(page.getByLabel('统计模型').locator('option')).toHaveCount(5);
  await inspectPicker(page,page.getByLabel('统计模型'),theme+'-usage',color);
  await page.getByRole('button',{name:'设置',exact:true}).click();
- await inspectPicker(page,page.getByLabel('主题',{exact:true}),theme+'-theme',color);
+ await inspectPicker(page,page.getByLabel('配色风格',{exact:true}),theme+'-theme',color);
  expect(errors).toEqual([]);
 });
 
 test('editor starts a composited entrance and preserves focus and reduced motion',async({page})=>{
- await page.goto('/');await expect(page.getByRole('button',{name:'添加供应商',exact:true})).toBeEnabled();
+ await page.goto('/');await page.getByRole('button',{name:'供应商',exact:true}).click();await expect(page.getByRole('button',{name:'添加供应商',exact:true})).toBeEnabled();
  await page.getByRole('button',{name:'添加供应商',exact:true}).focus();
  const motion=await page.evaluate(async()=>{
   [...document.querySelectorAll('button')].find(el=>el.textContent?.includes('添加供应商'))!.click();
@@ -67,6 +68,7 @@ test('long project labels and scrollable menus retain keyboard and high-contrast
   Object.assign(window,{isTauri:true,__TAURI_EVENT_PLUGIN_INTERNALS__:{unregisterListener:()=>{}},__TAURI_INTERNALS__:{
    metadata:{currentWindow:{label:'main'},currentWebview:{label:'main'}},transformCallback:()=>1,
    invoke:async(command:string)=>{
+    if(command==='usage_report')return {input:0,output:0,cached:null,buckets:[],models:[],sessions:[],availableModels:[],warnings:[],scannedFiles:0};
     if(command==='interrupted_operations')return [];
     if(command==='bootstrap')return {providers:[],settings:{theme:'light',scrollPositions:{}},version:'test',migrationError:null};
     if(command==='scan_sessions')return {sessions:Array.from({length:40},(_,i)=>({id:String(i),title:'Test '+i,cwd:'D:/very-long-project-name-should-not-hide-the-arrow-'+i,updated:0,archived:false})),warnings:[]};

@@ -1,3 +1,4 @@
+import {setTheme} from './helpers';
 import {test,expect,type Page} from '@playwright/test';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
@@ -21,6 +22,8 @@ async function desktop(page:Page,mica:boolean|'error'=false){
     if(command==='plugin:window|is_maximized')return false;
     if(command==='switch_provider')return new Promise((resolve,reject)=>{w.finish=()=>resolve('Codex 已启动');w.fail=()=>reject('模拟修复失败，原始文件未修改')});
     if(command==='cancel_operation'){w.fail();return}
+    if(command==='usage_report')return {input:0,output:0,cached:null,buckets:[],models:[],sessions:[],availableModels:[],warnings:[],scannedFiles:0};
+    if(command==='scan_sessions')return {sessions:[],warnings:[]};
     if(command==='interrupted_operations')return w.interrupted?[{id:'interrupted',description:'切换供应商',state:'Applying',fileCount:2,legacy:false}]:[];
     if(command==='restore_operation'){if(w.recoveryFails)throw new Error('检测到外部改动，拒绝覆盖');w.interrupted=false;return '中断操作已恢复'}
     return null;
@@ -28,13 +31,13 @@ async function desktop(page:Page,mica:boolean|'error'=false){
   }});
  },mica);
  await page.goto('/');
- await expect(page.getByRole('heading',{name:'供应商',exact:true})).toBeVisible();
+ await page.getByRole('button',{name:'供应商',exact:true}).click();await expect(page.getByRole('heading',{name:'供应商',exact:true})).toBeVisible();
 }
 
 test('only interrupted operations expose recovery, with external-edit errors preserved',async({page})=>{
  await page.addInitScript(()=>{Object.assign(window,{interrupted:true,recoveryFails:true})});
  await desktop(page);
- await expect(page.getByRole('navigation',{name:'主导航'}).getByRole('button')).toHaveCount(4);
+ await expect(page.getByRole('navigation',{name:'主导航'}).getByRole('button')).toHaveCount(5);
  await expect(page.getByRole('button',{name:'备份恢复',exact:true})).toHaveCount(0);
  await expect(page.getByRole('alert')).toContainText('上次操作中断');
  await page.getByRole('button',{name:'恢复中断操作',exact:true}).click();
@@ -55,17 +58,17 @@ test('opaque fallback in both themes, Mica opt-in, and text selection',async({pa
  await expect(page).toHaveTitle('Easy Switch');
  expect(page.url()).toBe('http://127.0.0.1:1420/');
  await expect(page.locator('html')).toHaveAttribute('data-backdrop','solid');
- await expect(page.locator('.app-shell')).toHaveCSS('background-color','rgb(242, 246, 252)');
+ await expect(page.locator('.app-shell')).toHaveCSS('background-color','rgb(243, 239, 244)');
  await expect(page.locator('h1')).toHaveCSS('user-select','none');
  await page.getByRole('heading',{name:'供应商',exact:true}).dblclick();
  expect(await page.evaluate(()=>getSelection()?.toString())).toBe('');
  const search=page.getByLabel('搜索供应商');await search.fill('test');await search.press('Control+A');
  expect(await search.evaluate(el=>(el as HTMLInputElement).selectionEnd!-(el as HTMLInputElement).selectionStart!)).toBe(4);
  await search.fill('');
- await page.getByLabel('深色',{exact:true}).click();
- await expect(page.locator('.app-shell')).toHaveCSS('background-color','rgb(20, 28, 41)');
+ await setTheme(page,'深色');
+ await expect(page.locator('.app-shell')).toHaveCSS('background-color','rgb(33, 30, 37)');
  await expect(page.locator('.operation-progress')).toHaveCount(0);
- await page.getByLabel('跟随系统',{exact:true}).click();
+ await setTheme(page,'跟随系统');
  await page.emulateMedia({colorScheme:'dark'});
  await expect(page.locator('html')).toHaveAttribute('data-theme','dark');
  await expect.poll(()=>page.evaluate(()=>(window as any).appearance)).toMatchObject({system:true,dark:true});
@@ -78,14 +81,14 @@ test('opaque fallback in both themes, Mica opt-in, and text selection',async({pa
 test('Mica is enabled only when the native operation succeeds',async({page})=>{
  await desktop(page,true);
  await expect(page.locator('html')).toHaveAttribute('data-backdrop','mica');
- await expect(page.locator('.app-shell')).toHaveCSS('background-color','rgba(242, 246, 252, 0.5)');
+ await expect(page.locator('.app-shell')).toHaveCSS('background-color','rgba(243, 239, 244, 0.5)');
  await expect(page.locator('body')).toHaveCSS('background-color','rgba(0, 0, 0, 0)');
 });
 
 test('appearance errors retain the opaque fallback',async({page})=>{
  await desktop(page,'error');
  await expect(page.locator('html')).toHaveAttribute('data-backdrop','solid');
- await expect(page.locator('.app-shell')).toHaveCSS('background-color','rgb(242, 246, 252)');
+ await expect(page.locator('.app-shell')).toHaveCSS('background-color','rgb(243, 239, 244)');
  await expect.poll(()=>page.evaluate(()=>(window as any).calls.includes('window_ready'))).toBe(true);
 });
 
@@ -96,6 +99,8 @@ for(const failed of [false,true])test(`startup reveals only after configuration 
    metadata:{currentWindow:{label:'main'},currentWebview:{label:'main'}},transformCallback:()=>1,
    invoke:async(command:string)=>{
     w.startupCalls.push(command);
+    if(command==='usage_report')return {input:0,output:0,cached:null,buckets:[],models:[],sessions:[],availableModels:[],warnings:[],scannedFiles:0};
+    if(command==='scan_sessions')return {sessions:[],warnings:[]};
     if(command==='interrupted_operations')return [];
     if(command==='bootstrap')return new Promise((resolve,reject)=>{w.finishBootstrap=()=>failed?reject(new Error('配置读取失败')):resolve({providers:[],settings:{theme:'dark',scrollPositions:{}},version:'test',migrationError:null})});
     if(command==='window_appearance')return new Promise((resolve,reject)=>{w.finishAppearance=()=>failed?reject(new Error('Mica unavailable')):resolve(true)});
@@ -135,8 +140,8 @@ test('editor avoids full-window blur and translucent animation; resize queries a
 test('confirmation and progress remain opaque over Mica in both themes',async({page})=>{
  const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
  await desktop(page,true);
- for(const [theme,color] of [['浅色','rgb(255, 255, 255)'],['深色','rgb(31, 39, 52)']]){
-  await page.getByLabel(theme,{exact:true}).click();
+ for(const [theme,color] of [['浅色','rgb(255, 252, 255)'],['深色','rgb(44, 39, 50)']]){
+  await setTheme(page,theme);
   await page.getByRole('button',{name:'切换',exact:true}).click();
   const dialog=page.getByRole('dialog');
   await expect(dialog).toBeVisible();
@@ -156,7 +161,7 @@ test('switch progress, elapsed time, safe commit, completion and cancellation',a
  const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
  await page.clock.install();await desktop(page);
  await page.emulateMedia({colorScheme:'light'});
- await page.getByLabel('跟随系统',{exact:true}).click();
+ await setTheme(page,'跟随系统');
  const begin=async()=>{await page.getByRole('button',{name:'切换',exact:true}).click();await page.getByRole('button',{name:'切换并重启',exact:true}).click();await expect(page.locator('.operation-progress')).toBeVisible()};
  const emit=async(stage:string,detail:string,completed=0,total:number|null=null,cancellable=true)=>page.evaluate(p=>(window as any).emitProgress(p),{stage,detail,completed,total,cancellable});
  await begin();
@@ -174,7 +179,7 @@ test('switch progress, elapsed time, safe commit, completion and cancellation',a
  await expect(page.getByRole('button',{name:'备份恢复',exact:true})).toHaveCount(0);
  await page.getByRole('button',{name:'设置',exact:true}).click();
  await page.clock.runFor(300);
- await expect(page.locator('.operation-progress')).toHaveCSS('background-color','rgb(255, 255, 255)');
+ await expect(page.locator('.operation-progress')).toHaveCSS('background-color','rgb(255, 252, 255)');
  await expect(page.locator('.operation-progress')).not.toHaveCSS('box-shadow','none');
  await page.screenshot({animations:'disabled',path:join(tmpdir(),'easy-switch-progress-light.png')});
  await page.setViewportSize({width:940,height:620});
@@ -185,7 +190,7 @@ test('switch progress, elapsed time, safe commit, completion and cancellation',a
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
  await page.screenshot({animations:'disabled',path:join(tmpdir(),'easy-switch-progress-minimum.png')});
  await page.emulateMedia({colorScheme:'dark'});
- await expect(page.locator('.operation-progress')).toHaveCSS('background-color','rgb(31, 39, 52)');
+ await expect(page.locator('.operation-progress')).toHaveCSS('background-color','rgb(44, 39, 50)');
  await page.getByRole('button',{name:'取消',exact:true}).focus();
  await page.keyboard.press('Shift+Tab');
  await page.keyboard.press('Tab');

@@ -20,3 +20,4 @@ test-version.json
 # Handoff documents stay local.
 docs/HANDOFF*.md
 .claude/handoffs/
+design-qa.md

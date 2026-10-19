@@ -19,7 +19,7 @@
 https://github.com/yuan-me/easy-switch/releases/latest/download/latest.json
 ```
 
-每个安装包签名绑定自身版本；`requireSignedVersion=true` 防止把旧包签名配上伪造的新版本号。应用不会自动确认安装，Codex 仍运行或代理有请求时拒绝安装。下载失败可以重试，签名失败永不安装。
+每个安装包签名绑定自身版本；`requireSignedVersion=true` 防止把旧包签名配上伪造的新版本号。应用不会自动确认安装，用户确认后正常关闭 Codex，仍有写入者或代理请求时拒绝安装。下载失败可以重试，签名失败永不安装。
 
 ## 隔离测试通道
 
