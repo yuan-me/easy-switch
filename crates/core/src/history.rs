@@ -96,9 +96,12 @@ fn segment_readers(path: &Path) -> Result<Vec<BufReader<std::io::Take<File>>>> {
                 ensure!(b[0] == b'\n', "分页历史引用未对齐事件边界");
             }
         }
-        segments.push((next, cap));
+        segments.push((next.clone(), cap));
         let Some(base) = h.base else { break };
-        next = paths.get(&base).context("分页历史引用文件缺失")?.clone();
+        next = paths.get(&base).with_context(|| format!(
+            "历史不完整：{} 引用的历史文件 {base} 不存在",
+            next.file_name().unwrap_or_default().to_string_lossy()
+        ))?.clone();
         cap = h.base_offset.context("分页历史缺少字节偏移")?;
     }
     segments.reverse();
@@ -526,15 +529,17 @@ fn resolve_metadata(
         .filter(|v| !v.is_null())
     {
         let id = base["thread_id"].as_str().context("分页历史引用身份缺失")?;
-        let parent = *by_rollout.get(id).context("分页历史引用文件缺失")?;
-        resolve_metadata(
-            parent, nodes, by_rollout, selected, key, value, resolved, visiting,
-        )?;
         let old = base["end_byte_offset"]
             .as_u64()
             .context("分页历史缺少字节偏移")?;
-        node["payload"]["history_base"]["end_byte_offset"] =
-            resolved[&parent].1.translate(old)?.into();
+        // An absent parent is not modified; preserve its reference and offset exactly.
+        if let Some(&parent) = by_rollout.get(id) {
+            resolve_metadata(
+                parent, nodes, by_rollout, selected, key, value, resolved, visiting,
+            )?;
+            node["payload"]["history_base"]["end_byte_offset"] =
+                resolved[&parent].1.translate(old)?.into();
+        }
     }
     let bytes = if node == m.node {
         m.raw.clone()
@@ -567,8 +572,8 @@ fn resolve_metadata(
     Ok(())
 }
 
-/// Stage selected paginated metadata and every affected descendant in the same journal.
-/// Legacy edits keep their existing path. SQLite projection thread_id keys are physical
+/// Stage named rollouts and every affected descendant in the same journal.
+/// Legacy files without rollout IDs keep their existing path. SQLite projection thread_id keys are physical
 /// rollout IDs, not logical thread IDs or the current threads.rollout_path.
 pub fn stage_metadata(
     journal: &mut crate::journal::Journal,
@@ -639,7 +644,8 @@ pub(crate) fn stage_metadata_with_events(
                 scanned,
                 None,
             ));
-            if m.node["payload"]["history_mode"] == "paginated" {
+            // A paginated child can reference an older, non-paginated rollout.
+            if m.node["payload"]["history_mode"] == "paginated" || rollout_id(&m.path).is_some() {
                 nodes.push(m);
             }
         }

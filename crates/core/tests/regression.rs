@@ -1306,6 +1306,37 @@ struct FakeHost {
     fail: bool,
 }
 #[test]
+fn switch_with_missing_history_base_commits_provider_without_changing_history_reference() {
+    let mut f = fixture();
+    let path = f.file.with_file_name(format!("rollout-{}.jsonl", f.id));
+    fs::rename(&f.file, &path).unwrap();
+    f.file = path;
+    let raw = fs::read_to_string(&f.file).unwrap();
+    let (meta, body) = raw.split_once("\r\n").unwrap();
+    let mut meta: Value = serde_json::from_str(meta).unwrap();
+    let missing = uuid::Uuid::new_v4().to_string();
+    let reference = json!({"thread_id":missing,"end_byte_offset":1234,"end_ordinal_exclusive":2});
+    meta["payload"]["history_mode"] = "paginated".into();
+    meta["payload"]["session_id"] = f.id.clone().into();
+    meta["payload"]["history_base"] = reference.clone();
+    fs::write(&f.file, format!("{meta}\r\n{body}")).unwrap();
+    let database = db(&f);
+    let p = api("b");
+    f.store.save("providers.json", &vec![p.clone()]).unwrap();
+    let host = FakeHost { stops: AtomicUsize::new(0), starts: AtomicUsize::new(0), fail: false };
+    assert_eq!(service::switch(&f.store, &p, &host, &CancellationToken::new(), |_| {}).unwrap(), "ready");
+    assert_eq!(host.starts.load(Ordering::SeqCst), 1);
+    assert_eq!(f.store.settings().unwrap().active_provider_id.as_deref(), Some("b"));
+    assert_eq!(scan(&f)[0].provider, "b");
+    let saved = fs::read_to_string(&f.file).unwrap();
+    let (saved_meta, saved_body) = saved.split_once("\r\n").unwrap();
+    assert_eq!(saved_body, body);
+    assert_eq!(serde_json::from_str::<Value>(saved_meta).unwrap()["payload"]["history_base"], reference);
+    let c = rusqlite::Connection::open(database).unwrap();
+    assert_eq!(c.query_row("SELECT model_provider FROM threads WHERE id=?1", [&f.id], |r| r.get::<_,String>(0)).unwrap(), "b");
+    assert!(sessions::detail(&scan(&f)[0], 100).unwrap_err().to_string().contains(&missing));
+}
+#[test]
 fn switch_ignores_missing_rollout_indexes_without_deleting_records() {
     for live_session in [true, false] {
         let f = fixture();

@@ -804,7 +804,7 @@ fn stage_changes_inner(
         ensure!(header.id == item.id, "线程索引与会话身份不一致，未修改");
         match action {
             "provider" | "migrate" => {
-                if header.paginated {
+                if header.paginated || crate::history::rollout_id(&path).is_some() {
                     continue;
                 }
                 let temp = j.dir.join(format!("{}.jsonl", uuid::Uuid::new_v4()));

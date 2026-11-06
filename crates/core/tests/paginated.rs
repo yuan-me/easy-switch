@@ -228,6 +228,50 @@ fn body(path: &std::path::Path) -> Vec<u8> {
     let bytes = fs::read(path).unwrap();
     bytes[bytes.iter().position(|b| *b == b'\n').unwrap() + 1..].to_vec()
 }
+
+#[test]
+fn missing_history_base_does_not_block_provider_change_or_rewrite_the_reference() {
+    let (t, s, id, a, b, c) = unpadded();
+    let reference = history::header(&b).unwrap();
+    let bodies = [body(&b), body(&c)];
+    fs::remove_file(&a).unwrap();
+    let rows = selected(&s, &id);
+    let mut j = Journal::new(&t.path().join("store"), "missing base").unwrap();
+    sessions::stage_changes(&mut j, &s, &rows, "provider", Some("p_b48e2743bb85"), &CancellationToken::new()).unwrap();
+    j.commit().unwrap();
+    assert!(!a.exists());
+    let after = history::header(&b).unwrap();
+    assert_eq!(after.base, reference.base);
+    assert_eq!(after.base_offset, reference.base_offset);
+    assert_eq!([body(&b), body(&c)], bodies);
+    assert_eq!(history::header(&c).unwrap().base_offset, Some(fs::metadata(&b).unwrap().len()));
+    assert_eq!(selected(&s, &id)[0].provider, "p_b48e2743bb85");
+    assert!(sessions::detail(&rows[0], 100).is_err(), "missing history must not appear complete");
+}
+
+#[test]
+fn legacy_history_base_is_resolved_and_rebased_with_its_paginated_child() {
+    let (t, s, id, a, b, c) = unpadded();
+    let rows = selected(&s, &id);
+    // Legacy metadata has no history_mode; padding keeps the fixture's offsets valid.
+    let raw = fs::read(&a).unwrap();
+    let end = raw.iter().position(|b| *b == b'\n').unwrap();
+    let mut meta: serde_json::Value = serde_json::from_slice(&raw[..end]).unwrap();
+    meta["payload"].as_object_mut().unwrap().remove("history_mode");
+    let mut legacy = serde_json::to_vec(&meta).unwrap();
+    legacy.resize(end, b' ');
+    legacy.extend_from_slice(&raw[end..]);
+    fs::write(&a, legacy).unwrap();
+    assert!(!history::header(&a).unwrap().paginated);
+    let bodies = [body(&a), body(&b), body(&c)];
+    let mut j = Journal::new(&t.path().join("store"), "legacy base").unwrap();
+    sessions::stage_changes(&mut j, &s, &rows, "provider", Some("p_b48e2743bb85"), &CancellationToken::new()).unwrap();
+    j.commit().unwrap();
+    assert_eq!([body(&a), body(&b), body(&c)], bodies);
+    assert_eq!(history::header(&b).unwrap().base_offset, Some(fs::metadata(&a).unwrap().len()));
+    assert_eq!(history::header(&c).unwrap().base_offset, Some(fs::metadata(&b).unwrap().len()));
+    assert_eq!(sessions::detail(&rows[0], 100).unwrap().messages.len(), 2);
+}
 #[test]
 fn duplicate_indexes_rebase_every_projection_once_and_restore() {
     let (t, s, id, a, b, c) = unpadded();

@@ -4,15 +4,19 @@
 
 在 Windows 上切换 Codex 供应商，管理本地会话和 Token 用量。
 
-[下载 v1.4.0](https://github.com/yuan-me/easy-switch/releases/download/v1.4.0/Easy.Switch_1.4.0_x64-setup.exe) · [更新记录](CHANGELOG.md) · [使用 Fast](docs/NATIVE_FAST.md)
+[下载 v1.4.1](https://github.com/yuan-me/easy-switch/releases/download/v1.4.1/Easy.Switch_1.4.1_x64-setup.exe) · [更新记录](CHANGELOG.md) · [使用 Fast](docs/NATIVE_FAST.md)
 
 ## 安装
 
-1. 下载并运行 `Easy.Switch_1.4.0_x64-setup.exe`。安装到当前 Windows 用户，缺少 WebView2 时会联网下载。
+1. 下载并运行 `Easy.Switch_1.4.1_x64-setup.exe`。安装到当前 Windows 用户，缺少 WebView2 时会联网下载。
 2. 打开“设置”，确认 Codex 数据目录和桌面程序路径。
 3. 添加供应商，填写 API 地址、密钥和模型，然后点击“切换”。切换会正常退出并重新启动 Codex，请先完成正在生成的任务。
 
 支持 Windows x64，日常使用不需要 Rust 或 Node.js。`test-channel` 用于隔离测试，请使用正式发行版。
+
+## 1.4.1 更新
+
+修复“分页历史引用文件缺失”阻止供应商切换的问题。已有缺失引用保持不变，旧格式父文件也会参与偏移计算；原有聊天正文不变。查看不完整会话时仍会指出缺失的历史文件，修复不会恢复已经丢失的内容。
 
 ## 1.4.0 更新
 
