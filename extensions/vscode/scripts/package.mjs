@@ -40,7 +40,7 @@ try {
   await compiled('out');
   // vsce stores the readme under this canonical lower-case ZIP path.
   await copy('README.md', 'readme.md');
-  await copy('LICENSE');
+  await copy('LICENSE', 'LICENSE.txt');
   await copy('VALIDATION.md');
   await copy('COMPATIBILITY.md');
   for (const name of ['compatibility-matrix.json', 'compatibility-packages.json', 'release-0.1.3-sha256.json']) {
