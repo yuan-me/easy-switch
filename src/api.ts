@@ -21,9 +21,9 @@ export async function call<T>(command:string,args?:Record<string,unknown>):Promi
  });
  const input=buckets.reduce((n,b)=>n+b.input,0),output=buckets.reduce((n,b)=>n+b.output,0),cached=buckets.reduce((n,b)=>n+b.cached,0);
  return {input,output,cached,buckets,models:names.flatMap((name,i)=>q.model&&q.model!==name?[]:[{id:name,name,input:Math.round(input*(q.model?1:[.5,.3,.15,.05][i])),output:Math.round(output*(q.model?1:[.5,.3,.15,.05][i])),cached:Math.round(cached*(q.model?1:[.5,.3,.15,.05][i]))}]),sessions:[{id:'demo-session-0',name:'仪表盘布局调整',input,output,cached}],availableModels:names,warnings:[],scannedFiles:8} as T;
- }if(command==='interrupted_operations'||command==='discover')return [] as T;if(command==='save_scroll')return undefined as T;throw new Error('这是界面演示；请在 Easy Switch 桌面程序中执行实际操作。');}
+ }if(command==='interrupted_operations'||command==='discover')return [] as T;if(command==='save_scroll')return undefined as T;throw new Error('当前是演示页面，请在 Easy Switch 桌面程序中操作。');}
 export async function events<T>(name:string,handler:(data:T)=>void){if(preview)return ()=>{};return listen<T>(name,e=>handler(e.payload));}
 let pendingScan:Promise<{sessions:Session[];warnings:string[]}>|null=null;
 export function scanSessions(){return pendingScan??=call<{sessions:Session[];warnings:string[]}>('scan_sessions').finally(()=>{pendingScan=null})}
-export async function pickDirectory(){if(preview)throw new Error('文件选择仅在桌面程序中可用');return open({directory:true,multiple:false});}
-export async function pickExecutable(){if(preview)throw new Error('文件选择仅在桌面程序中可用');return open({multiple:false,filters:[{name:'Windows 程序',extensions:['exe']}]});}
+export async function pickDirectory(){if(preview)throw new Error('请在桌面程序中选择文件');return open({directory:true,multiple:false});}
+export async function pickExecutable(){if(preview)throw new Error('请在桌面程序中选择文件');return open({multiple:false,filters:[{name:'Windows 程序',extensions:['exe']}]});}

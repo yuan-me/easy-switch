@@ -62,7 +62,7 @@ pub async fn download_update(app: tauri::AppHandle) -> Result<Value, String> {
     let version = update.version.clone();
     update.timeout = Some(std::time::Duration::from_secs(20 * 60));
     let mut downloaded = 0u64;
-    let data=update.download(|chunk,total|{downloaded+=chunk as u64;status(&app,json!({"state":"downloading","version":version,"downloaded":downloaded,"total":total}));},||{}).await.map_err(|_|{status(&app,json!({"state":"error","message":"下载失败或签名校验不通过；当前版本未改变"}));"下载失败或签名校验不通过".to_string()})?;
+    let data=update.download(|chunk,total|{downloaded+=chunk as u64;status(&app,json!({"state":"downloading","version":version,"downloaded":downloaded,"total":total}));},||{}).await.map_err(|_|{status(&app,json!({"state":"error","message":"下载失败或签名验证未通过，当前版本未变"}));"下载失败或签名验证未通过".to_string()})?;
     *state.download.lock().unwrap() = Some(data);
     Ok(status(
         &app,
@@ -91,7 +91,7 @@ pub async fn install_update(app: tauri::AppHandle) -> Result<(), String> {
         .map_err(err)?
     {
         if health["active"].as_u64().unwrap_or(1) > 0 {
-            return Err("代理仍在处理请求，请空闲后安装".into());
+            return Err("代理还在处理请求，请等请求结束后再安装".into());
         }
     }
     // Only the confirmed install command closes Codex; failed shutdown keeps the download.
@@ -115,7 +115,7 @@ pub async fn install_update(app: tauri::AppHandle) -> Result<(), String> {
         .ok_or("请先下载更新")?;
     if update.install(&data).is_err() {
         *state.download.lock().unwrap() = Some(data);
-        return Err("安装未完成，请重试或安装上一版本；数据目录保留".into());
+        return Err("安装未完成，请重试或安装上一版本。数据目录已保留".into());
     }
     Ok(())
 }

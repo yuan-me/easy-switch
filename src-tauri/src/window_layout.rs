@@ -1,18 +1,17 @@
 use tauri::{LogicalSize, PhysicalPosition, PhysicalRect, PhysicalSize, WebviewWindow};
 
+const DEFAULT_SIZE: LogicalSize<f64> = LogicalSize::new(1180.0, 840.0);
 const MIN_SIZE: LogicalSize<f64> = LogicalSize::new(940.0, 620.0);
 
 fn bounds(area: &PhysicalRect<i32, u32>, scale: f64) -> PhysicalRect<i32, u32> {
     let width = f64::from(area.size.width);
     let height = f64::from(area.size.height);
-    // Match the reference proportions, while leaving margins even at high DPI.
+    // Keep the workspace compact on large monitors and inside small work areas.
     let size = PhysicalSize::new(
-        (width * 0.65)
-            .max(MIN_SIZE.width * scale)
+        (DEFAULT_SIZE.width * scale)
             .min(width * 0.90)
             .round() as u32,
-        (height * 0.82)
-            .max(MIN_SIZE.height * scale)
+        (DEFAULT_SIZE.height * scale)
             .min(height * 0.90)
             .round() as u32,
     );
@@ -71,12 +70,12 @@ mod tests {
             position: PhysicalPosition::new(0, 0),
             size: PhysicalSize::new(1920, 1040),
         };
-        assert_eq!(bounds(&area, 1.0).size, PhysicalSize::new(1248, 853));
-        assert_eq!(bounds(&area, 1.5).size, PhysicalSize::new(1410, 930));
+        assert_eq!(bounds(&area, 1.0).size, PhysicalSize::new(1180, 840));
+        assert_eq!(bounds(&area, 1.5).size, PhysicalSize::new(1728, 936));
         let large = PhysicalRect {
             size: PhysicalSize::new(3840, 2080),
             ..area
         };
-        assert_eq!(bounds(&large, 1.5).size, PhysicalSize::new(2496, 1706));
+        assert_eq!(bounds(&large, 1.5).size, PhysicalSize::new(1770, 1260));
     }
 }

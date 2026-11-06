@@ -34,18 +34,18 @@ export default function Usage({onSession}:{onSession:(id:string)=>void}){
   <div className="page-heading"><h1>Token 统计</h1><button onClick={()=>setRevision(v=>v+1)} disabled={loading} aria-label="刷新统计">{loading?<Loader2 className="spin" size={16}/>:<RefreshCw size={16}/>}刷新</button></div>
   <div className="toolbar usage-toolbar">
    <div className="segmented" aria-label="统计周期">{([['day','日'],['week','周'],['month','月']] as const).map(([value,label])=><button key={value} aria-pressed={period===value} onClick={()=>setPeriod(value)}>{label}</button>)}</div>
-   <div className="usage-date"><button aria-label="上一周期" onClick={()=>move(-1)}><ChevronLeft size={16}/></button><label title="按本机时区统计"><input aria-label="统计日期" type="date" value={localDate(range.start)} max={localDate(new Date())} onChange={e=>{if(e.target.value)setDate(e.target.value)}}/>{period!=='day'&&<span>— {endLabel}</span>}</label><button aria-label="下一周期" disabled={range.end>new Date()} onClick={()=>move(1)}><ChevronRight size={16}/></button></div>
+   <div className="usage-date"><button aria-label="上一周期" onClick={()=>move(-1)}><ChevronLeft size={16}/></button><label title="按本机时区统计"><input aria-label="统计日期" type="date" value={localDate(range.start)} max={localDate(new Date())} onChange={e=>{if(e.target.value)setDate(e.target.value)}}/>{period!=='day'&&<span>至 {endLabel}</span>}</label><button aria-label="下一周期" disabled={range.end>new Date()} onClick={()=>move(1)}><ChevronRight size={16}/></button></div>
    <Select aria-label="统计模型" value={model} onChange={e=>setModel(e.target.value)}><option value="">全部模型</option>{[...new Set([...(report?.availableModels??[]),...(model?[model]:[])])].map(m=><option key={m}>{m}</option>)}</Select>
   </div>
   {error&&<div className="warning-box" role="alert">{error}<button onClick={()=>setRevision(v=>v+1)}>重试</button></div>}
-  {report?.warnings.length? <details className="warning-box"><summary>部分记录未纳入统计（{report.warnings.length} 项）</summary>{report.warnings.map((w,i)=><p key={i}>{w}</p>)}</details>:null}
+  {report?.warnings.length? <details className="warning-box"><summary>部分记录无法统计（{report.warnings.length} 项）</summary>{report.warnings.map((w,i)=><p key={i}>{w}</p>)}</details>:null}
   {!report&&loading?<div className="loading"><Loader2 className="spin"/>正在汇总本地 Token 记录…</div>:report&&<>
    <div className="usage-metrics">
     {([['总 Token',compact.format(sum)],['输入 Token',compact.format(report.input)],['输出 Token',compact.format(report.output)],['缓存命中比例',ratio]] as const).map(([name,value])=><div key={name}><span>{name}</span><strong data-testid={name==='总 Token'?'usage-total':undefined}>{value}</strong>{name==='缓存命中比例'&&<small>缓存输入 {report.cached===null?'—':compact.format(report.cached)}</small>}</div>)}
    </div>
    <div className="usage-panel usage-chart">
-    <div className="usage-panel-heading"><div><h2>{period==='day'?'每小时':'每日'} Token 用量</h2><p>{range.start.toLocaleDateString('zh-CN')} — {endLabel} · {period==='day'?'按小时':'按天'}汇总</p></div><div className="usage-legend"><span><i/>输入</span><span><i/>输出</span></div></div>
-    {sum===0&&<p className="usage-empty">所选范围暂无 Token 用量记录</p>}
+    <div className="usage-panel-heading"><div><h2>{period==='day'?'每小时':'每日'} Token 用量</h2><p>{range.start.toLocaleDateString('zh-CN')} 至 {endLabel} · {period==='day'?'按小时':'按天'}汇总</p></div><div className="usage-legend"><span><i/>输入</span><span><i/>输出</span></div></div>
+    {sum===0&&<p className="usage-empty">这段时间没有 Token 用量记录</p>}
     <div className="usage-plot">
      <div className="usage-grid" aria-hidden="true">{[1,.75,.5,.25,0].map(n=><div key={n} style={{top:(1-n)*100+'%'}}><span>{compact.format(ceiling*n)}</span></div>)}</div>
      <div className={'usage-columns '+(report.buckets.length>10?'dense':'')}>{report.buckets.map((bucket,i)=>{
@@ -59,7 +59,7 @@ export default function Usage({onSession}:{onSession:(id:string)=>void}){
    </div>
    <div className="usage-breakdown">
     <div className="usage-panel"><h2>模型分布</h2><div className="usage-share-list">{shareRows(report.models)}{!report.models.length&&<p className="muted">暂无记录</p>}</div></div>
-    <div className="usage-panel"><div className="usage-panel-heading"><h2>会话消耗排行</h2>{report.sessions.length>5&&<button className="text-button" onClick={()=>setAllSessions(v=>!v)}>{allSessions?'收起':'显示全部'}</button>}</div><div className="usage-share-list">{shareRows(allSessions?report.sessions:report.sessions.slice(0,5),true)}{!report.sessions.length&&<p className="muted">暂无记录</p>}</div></div>
+    <div className="usage-panel"><div className="usage-panel-heading"><h2>会话用量排行</h2>{report.sessions.length>5&&<button className="text-button" onClick={()=>setAllSessions(v=>!v)}>{allSessions?'收起':'显示全部'}</button>}</div><div className="usage-share-list">{shareRows(allSessions?report.sessions:report.sessions.slice(0,5),true)}{!report.sessions.length&&<p className="muted">暂无记录</p>}</div></div>
    </div>
   </>}
  </section>

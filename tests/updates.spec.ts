@@ -30,7 +30,7 @@ test('background download asks before installing, cancellation stays dismissed, 
  await page.evaluate(()=>(window as any).emitUpdate({state:'ready',version:'1.3.1'}));
  const dialog=page.getByRole('dialog',{name:'关闭 Codex 并更新 Easy Switch'});
  await expect(dialog).toBeVisible();
- await expect(dialog).toContainText('确认后将正常关闭 Codex');
+ await expect(dialog).toContainText('安装前会关闭 Codex 和 Easy Switch');
  expect(await page.evaluate(()=>(window as any).installCalls)).toBe(0);
  await dialog.getByRole('button',{name:'取消',exact:true}).click();
  await page.evaluate(()=>(window as any).emitUpdate({state:'ready',version:'1.3.1'}));

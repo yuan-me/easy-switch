@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.05" stroke-linecap="round" stroke-linejoin="round">
+  <defs>
+    <path id="blade" d="M12 3C17.5 3 21.2 7.1 20.5 12.1C20 15.5 17.3 17.4 14.2 16.4C12.2 15.8 10.9 14.6 11.6 13.4C12.1 12.5 13.1 12.7 14.2 13.2C16.9 14.4 17.5 11.7 16.4 8.5C15.6 6.3 14 4.3 12 3Z"/>
+  </defs>
+  <use href="#blade"/>
+  <use href="#blade" transform="rotate(120 12 12)"/>
+  <use href="#blade" transform="rotate(240 12 12)"/>
+</svg>

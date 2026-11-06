@@ -1,0 +1,13 @@
+{
+  "crates/vscode-helper/src/guard.rs": "56f3067028ef40ba4917acc5f799a3d6ecbd1033940efa6c554192a1955cfb8a",
+  "extensions/vscode/src/backend.ts": "dcb24c5cb36c7e6620350d7fc13bedd6ba82dd121cdd3647a4267f4ddb07cfd4",
+  "extensions/vscode/src/procAudit.ts": "a8111242ebd3d437e2c0a16b56e549e63f0ec1f28c0f2787760a160bafef58b6",
+  "extensions/vscode/src/storage.ts": "f211cdedb68847c7398869ae802c4ab1366e9444ba676059a08a4bbf7cf72b95",
+  "extensions/vscode/src/extension.ts": "5445dcd447c98f6a2fa828500e14f155e481af0bd91690f0c10df1c0b0daee3d",
+  "extensions/vscode/scripts/proc-audit.py": "b2530d335fd84e11035878aa6db93b171d695ced421a4bfe8b81d2e1c5def85a",
+  "extensions/vscode/scripts/install-proc-audit.sh": "6498f5209c3c5bd75428b84447dbcdc1339802509a9028e24b1b8984bb9cdbc7",
+  "extensions/vscode/bin/linux-x64/easy-switch-helper": "62c7c7bb342f591d5f4febf484f8176b6e4f55d3977b33f8bac6b75d9a7debe4",
+  "extensions/vscode/bin/linux-arm64/easy-switch-helper": "005649fb9a998ddfe395f2fbd3cfeb5d8381dfebb36dc915e7b43e884e69ac21",
+  "extensions/vscode/resources/switch.svg": "449ee3c60c1a10c0a09b656ee0901255d4c0b0079f53145a23a30d1880de2aff",
+  "extensions/vscode/resources/icon.png": "3c163fd11a4c7087e78ff9a31104c509ec2cd3c714a44e94876d1afab7d07023"
+}

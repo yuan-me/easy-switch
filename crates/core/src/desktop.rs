@@ -110,7 +110,7 @@ pub fn is_desktop_entry(item: &Installation) -> bool {
 }
 pub trait DesktopHost {
     fn stop(&self) -> Result<()>;
-    fn start(&self) -> Result<String>;
+    fn start(&self, native_fast: bool) -> Result<String>;
 }
 pub struct Desktop {
     pub settings: Settings,
@@ -137,7 +137,7 @@ impl Desktop {
             s.desktop_app_id.is_some()
                 || p.parent()
                     .is_some_and(|r| r.join("resources").exists() || r.join("icudtl.dat").exists()),
-            "所选文件不像 Codex 桌面入口，不能使用 CLI"
+            "请选择 Codex 桌面程序，不能使用命令行版本"
         );
         Ok(Self { settings: s })
     }
@@ -185,14 +185,14 @@ impl DesktopHost for Desktop {
             writers
                 .iter()
                 .all(|(id, _)| belongs_to_desktop(*id, expected, &processes)),
-            "存在其他 Codex 写入实例，请正常退出后重试"
+            "还有其他 Codex 程序在写入数据，请退出后重试"
         );
         #[cfg(windows)]
         {
             let ids: Vec<_> = writers.iter().map(|x| x.0).collect();
             let mut window = native::find(&ids);
             if window == 0 {
-                self.start()?;
+                self.start(false)?;
                 for _ in 0..40 {
                     std::thread::sleep(Duration::from_millis(100));
                     window = native::find(&ids);
@@ -213,8 +213,9 @@ impl DesktopHost for Desktop {
         }
         anyhow::bail!("Codex 未完全退出，未修改数据；请按 Ctrl+Q 正常退出")
     }
-    fn start(&self) -> Result<String> {
+    fn start(&self, native_fast: bool) -> Result<String> {
         let s = &self.settings;
+        let fast_port = if Self::writers().is_empty() { crate::native_fast::launch_port(s, native_fast)? } else { None };
         if let Some(id) = &s.desktop_app_id {
             ensure!(
                 crate::sessions::normalize(&s.codex_home)?
@@ -245,19 +246,28 @@ impl DesktopHost for Desktop {
                     let manager: IApplicationActivationManager =
                         CoCreateInstance(&ApplicationActivationManager, None, CLSCTX_LOCAL_SERVER)?;
                     let app = HSTRING::from(id);
-                    manager.ActivateApplication(PCWSTR(app.as_ptr()), None, AO_NONE)?;
+                    let args = HSTRING::from(fast_port.map(|port| format!("--remote-debugging-address=127.0.0.1 --remote-debugging-port={port}")).unwrap_or_default());
+                    manager.ActivateApplication(PCWSTR(app.as_ptr()), PCWSTR(args.as_ptr()), AO_NONE)
+                        .context("未能启动 Codex，请手动启动")?;
                 }
             }
         } else {
             let mut cmd = Command::new(&s.desktop_executable);
             cmd.current_dir(Path::new(&s.desktop_executable).parent().unwrap())
                 .env("CODEX_HOME", &s.codex_home);
+            if let Some(port) = fast_port {
+                cmd.arg("--remote-debugging-address=127.0.0.1").arg(format!("--remote-debugging-port={port}"));
+            }
             if let Some(sqlite) = &s.sqlite_home {
                 cmd.env("CODEX_SQLITE_HOME", sqlite);
             } else {
                 cmd.env_remove("CODEX_SQLITE_HOME");
             }
-            cmd.spawn()?;
+            cmd.spawn().context("未能启动 Codex，请手动启动")?;
+        }
+        if let Some(port) = fast_port {
+            crate::native_fast::install_blocking(port).map_err(|e| anyhow::anyhow!("Codex 已启动，但 Fast 解锁未成功：{}", crate::runtime::safe_error(&e)))?;
+            return Ok("Codex 已重启，请在模型菜单中选择 Fast。".into());
         }
         for _ in 0..50 {
             let ids: Vec<_> = Self::writers()
@@ -276,7 +286,7 @@ impl DesktopHost for Desktop {
             }
             std::thread::sleep(Duration::from_millis(100));
         }
-        Ok("已发送启动请求；窗口尚未确认就绪".into())
+        Ok("已发送启动请求，暂未检测到可用窗口".into())
     }
 }
 pub fn open_thread(id: &str) -> Result<()> {

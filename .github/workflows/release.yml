@@ -16,6 +16,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: npm ci
+      - run: node crates/core/assets/native-fast-unlock.test.cjs
       - run: cargo test --workspace --locked
       - name: Require signing configuration
         env:
@@ -33,7 +34,7 @@ jobs:
         with:
           tagName: v__VERSION__
           releaseName: Easy Switch v__VERSION__
-          releaseBody: See CHANGELOG.md for changes and validation boundaries.
+          releaseBody: 更新内容和测试范围见 CHANGELOG.md。
           releaseDraft: true
           prerelease: false
           includeUpdaterJson: true

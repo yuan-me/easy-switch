@@ -11,15 +11,54 @@ use std::{
 pub struct Store {
     pub root: PathBuf,
 }
+pub(crate) fn private_dir(path: &Path) -> Result<()> {
+    crate::sessions::no_links(path)?;
+    let mut options = fs::DirBuilder::new();
+    options.recursive(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        options.mode(0o700);
+    }
+    options.create(path)?;
+    Ok(())
+}
+pub(crate) fn private_file(path: &Path, create_new: bool) -> Result<fs::File> {
+    crate::sessions::no_links(path)?;
+    let mut options = fs::OpenOptions::new();
+    options.write(true);
+    if create_new {
+        options.create_new(true);
+    } else {
+        options.create(true).truncate(true);
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let file = options.open(path)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        file.set_permissions(fs::Permissions::from_mode(0o600))?;
+    }
+    Ok(file)
+}
+pub(crate) fn sync_parent(path: &Path) -> Result<()> {
+    #[cfg(unix)]
+    fs::File::open(path.parent().context("文件没有父目录")?)?.sync_all()?;
+    #[cfg(not(unix))]
+    let _ = path;
+    Ok(())
+}
 pub fn atomic_write(path: &Path, bytes: &[u8]) -> Result<()> {
     let parent = path.parent().context("文件没有父目录")?;
-    fs::create_dir_all(parent)?;
+    private_dir(parent)?;
+    crate::sessions::no_links(path)?;
     let temp = parent.join(format!(".{}.tmp", uuid::Uuid::new_v4()));
     let result = (|| {
-        let mut f = fs::OpenOptions::new()
-            .create_new(true)
-            .write(true)
-            .open(&temp)?;
+        let mut f = private_file(&temp, true)?;
         f.write_all(bytes)?;
         f.sync_all()?;
         drop(f);
@@ -40,6 +79,7 @@ pub fn atomic_write(path: &Path, bytes: &[u8]) -> Result<()> {
         }
         #[cfg(not(windows))]
         fs::rename(&temp, path)?;
+        sync_parent(path)?;
         Ok(())
     })();
     let _ = fs::remove_file(temp);
@@ -47,7 +87,7 @@ pub fn atomic_write(path: &Path, bytes: &[u8]) -> Result<()> {
 }
 impl Store {
     pub fn open(root: PathBuf) -> Result<Self> {
-        fs::create_dir_all(&root)?;
+        private_dir(&root)?;
         Ok(Self { root })
     }
     pub fn default_root() -> PathBuf {
@@ -92,7 +132,10 @@ impl Store {
     }
     pub fn providers(&self) -> Result<Vec<Provider>> {
         let mut all: Vec<Provider> = self.read("providers.json", vec![Provider::official()])?;
+        let legacy_fast = self.settings()?.native_fast_unlock;
         for p in &mut all {
+            // Missing fields inherit the old switch; explicit per-provider choices always win.
+            p.native_fast_unlock.get_or_insert(legacy_fast && matches!(p.mode, AuthMode::Api | AuthMode::Aggregate));
             if let Some(cipher) = &p.protected_headers {
                 p.headers = serde_json::from_str(&crypto::unprotect(cipher)?)?;
             }
@@ -151,6 +194,7 @@ impl Store {
     pub fn save_provider(&self, mut p: Provider, key: Option<String>) -> Result<()> {
         let mut all = self.providers()?;
         let old = all.iter().find(|x| x.id == p.id);
+        p.native_fast_unlock = Some(p.native_fast_unlock.or_else(|| old.and_then(|p| p.native_fast_unlock)).unwrap_or(false));
         for (name, value) in &mut p.headers {
             if value.is_empty() {
                 if let Some(v) = old.and_then(|p| p.headers.get(name)) {

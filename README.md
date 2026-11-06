@@ -2,91 +2,79 @@
 
 <img src="src-tauri/icons/128x128.png" alt="Easy Switch 图标" width="80" height="80">
 
-Windows x64 的 Codex 供应商与会话管理工具，使用 Tauri 2、Rust、React/TypeScript。
+在 Windows 上切换 Codex 供应商，管理本地会话和 Token 用量。
 
-**[下载 v1.3.0 安装包](https://github.com/yuan-me/easy-switch/releases/download/v1.3.0/Easy.Switch_1.3.0_x64-setup.exe)** · [最新正式版](https://github.com/yuan-me/easy-switch/releases/latest) · [更新记录](CHANGELOG.md)
+[下载 v1.4.0](https://github.com/yuan-me/easy-switch/releases/download/v1.4.0/Easy.Switch_1.4.0_x64-setup.exe) · [更新记录](CHANGELOG.md) · [使用 Fast](docs/NATIVE_FAST.md)
 
-v1.3.0 新增本地仪表盘，统一全部主页面，支持主题色和设置自动保存；窗口按屏幕工作区与系统缩放动态居中。修复缺失会话文件的旧索引阻断切换的问题，下载更新后先确认再关闭 Codex 并安装。
+## 安装
 
-## 安装与使用
+1. 下载并运行 `Easy.Switch_1.4.0_x64-setup.exe`。安装到当前 Windows 用户，缺少 WebView2 时会联网下载。
+2. 打开“设置”，确认 Codex 数据目录和桌面程序路径。
+3. 添加供应商，填写 API 地址、密钥和模型，然后点击“切换”。切换会正常退出并重新启动 Codex，请先完成正在生成的任务。
 
-1. 下载并运行 `Easy.Switch_1.3.0_x64-setup.exe`，安装到当前 Windows 用户。缺少 WebView2 时，安装器会联网下载其引导程序。
-2. 打开 Easy Switch，在“设置”中确认 Codex 数据目录和桌面程序路径。
-3. 在“供应商”中添加配置并切换。使用 Sub2API 图片能力时，选择 Responses 协议并开启“Sub2API 图片工具兼容”，完整重启 Codex 后在新会话验证。
+支持 Windows x64，日常使用不需要 Rust 或 Node.js。`test-channel` 用于隔离测试，请使用正式发行版。
 
-普通使用无需安装 Rust 或 Node.js。`test-channel` 是独立验收通道，日常使用请选择正式版。
+## 1.4.0 更新
+
+- 按供应商设置“解锁原生Fast”，默认关闭，使用同一份显示模型列表。适配新版 Codex 的异步脚本，修复解锁失败和过早检查的问题。
+- 切换已保存但启动失败时，界面仍显示实际保存的供应商。Codex 已启动但 Fast 未解锁时，会单独说明原因。
+- 窗口和卡片更紧凑，侧栏可折叠。背景带少量主题色，图表缩小字号并增加输入、输出明细。
+- “兼容图片工具”和 Fast 位于供应商高级设置顶部。保存当前供应商的 Fast 开关后可选择立即重启或稍后应用。
+
+Fast 解锁只让客户端提供选项。重启后还需要在模型菜单中选中 Fast，蓝色闪电表示已选中。供应商是否支持优先处理、实际速度和费用由供应商决定。详见 [Fast 的使用范围与测试结果](docs/NATIVE_FAST.md)。
 
 ## 功能
 
-- 仪表盘汇总当前供应商、今日输入/输出 Token、最近七天用量、最近会话、模型同步和缓存摘要；未知或读取失败的数据明确提示。
-- 官方登录、混入 API、纯 API、聚合路由；Responses 透传和 Chat Completions 转换；按会话、轮转、权重与故障转移。
-- API / 混入供应商支持默认模型和 Codex 模型勾选；启动及每小时获取列表，保留排除项，新增模型显示 NEW 标签。
-- Sub2API 图片工具兼容开关。使用 `requires_openai_auth=false` 和指定 actor header，保留功能开关；不添加 `image_generation` 配置项。客户端工具注册和实际出图分别验收。
-- 会话搜索、分页、预览、Token 统计、Markdown 导出、归档恢复、Provider 修复、项目关联迁移及永久删除。
-- 当前 Windows 用户的 DPAPI 凭证与操作期间的临时备份加密；提交日志、摘要校验、外部修改与 SQLite WAL 保护。关闭 Easy Switch 窗口不终止仍在服务的独立 Runtime。
-- 系统/浅色/深色主题、预设及自定义主题色、鲜明/柔和配色、Windows 11 云母与统一标题栏；设置自动保存，失败可重试。窗口每次按屏幕工作区和缩放动态居中，阅读位置继续保存；普通提示 10 秒自动关闭。
-- 日／周／月 Token 用量、模型筛选和会话排行；统计只读本地历史，异常或缺失记录明确提示。
-- GitHub Releases 签名更新，支持自动下载和手动检查。
+- 官方登录、纯 API、混入 API 和聚合路由。支持 Responses 透传、Chat Completions 转换，以及按会话、轮转、权重和故障转移选择成员。
+- 获取供应商模型列表，选择默认模型及在 Codex 中显示的模型。启动后及每小时检查列表，保留手动排除项，提示新增和移除的模型。
+- 仪表盘显示当前供应商、今日输入与输出、最近七天用量、最近会话和缓存摘要。统计只读本地历史，缓存属于输入，不重复计入总量；缺失数据会提示。
+- 搜索、预览、导出、归档和删除会话，修复供应商关联，调整项目关联。项目关联操作不移动项目代码。
+- 浅色、深色、跟随系统主题及自定义主题色。设置自动保存，失败后可重试。
+- 检查和下载 GitHub 更新，验证签名后由用户确认安装。
 
-## 自动更新
+Responses 供应商可开启“兼容图片工具”。它提供客户端兼容配置，实际出图仍取决于供应商。Chat Completions 转换支持普通函数工具，不支持原生图片工具、加密历史和原生 compact。
 
-默认在启动后后台检查更新，运行期间每 24 小时再检查一次；发现新版后自动下载，下载完成提示“关闭 Codex 并更新 Easy Switch”。确认后才关闭 Codex 并安装，取消后仍可在“设置 → 软件更新”中安装。可分别关闭自动检查和自动下载，也可点击“检查更新”。
+## 数据与更新
 
-确认安装后正常关闭 Codex，并检查其已退出、代理无活动请求且无会话修改操作。关闭或安装启动失败会保留更新包供重试；签名或版本校验失败时拒绝安装。配置和会话存放在独立数据目录，需要回退时可从 Releases 重新安装上一版本。
+正式版数据保存在 `%LOCALAPPDATA%\EasySwitch`，测试版使用 `%LOCALAPPDATA%\EasySwitchTest`。首次启动可导入旧 `%LOCALAPPDATA%\CodexSwitch` 的供应商、设置和数据目录引用。密钥及自定义请求头使用当前 Windows 用户的 DPAPI 加密，不能直接跨账户迁移。
 
-## 已验证与当前边界
+切换时先正常退出 Codex，再临时备份配置和会话，校验修改并重启。成功后清理操作副本；中断的操作保留副本并提供恢复入口。检测到外部修改、数据库仍在写入或文件异常时会停止。永久删除会话无法撤销，需要保留时请先导出或归档。
 
-- v1.3.0：前端构建、130 项 Rust 测试及 39 项界面测试通过，覆盖仪表盘、动态窗口尺寸计算、主题联动、设置自动保存、更新确认和残留会话索引修复。GitHub Check/Release、安装包签名/版本/图标及匿名公开下载验证通过，正式更新入口已指向 1.3.0。本轮未执行 VM 覆盖安装、真实账号切换或自动更新安装。
+Codex 使用的 `auth.json` 和 `config.toml` 按客户端原生格式保存，其中可能含密钥，请勿公开。关闭 Easy Switch 窗口不会终止仍在处理请求的本地代理。
 
-- v1.2.0：121 项 Rust 测试、29 项界面测试、模型/密钥原生验收及 11 项窗口/统计检查通过。GitHub Check/Release、安装包签名、图标及匿名公开下载验证通过。修复性能来自合成基准；本轮未执行 VM 覆盖安装、Win10 真机或真实用户会话修复。
+默认启动后检查更新，运行期间每 24 小时再检查。下载完成后提示安装，确认后关闭 Codex 和 Easy Switch；取消会保留更新包。签名或版本校验失败时拒绝安装。可以在设置中分别关闭自动检查和自动下载。回退版本时可从 Releases 安装旧包，数据目录独立于安装目录。
 
-- v1.1.2 修复代码：108 项 Rust 测试、8 项界面测试及 Win11 隔离原生检查通过。Win10 兼容已在 v1.1.1 由用户确认；本轮未重新执行 Win10 真机切换、覆盖安装或自动更新安装。
+## Linux Remote-SSH
 
-- v1.1.0：102 项 Rust 测试、4 组界面测试、本机及 Windows 11 虚拟机隔离原生验收通过，覆盖统计、主题、窗口操作、最低窗口与通知计时。VM 使用合成数据，系统缩放 150%；本轮未重新验证安装覆盖或自动更新。
+仓库另有 VS Code 扩展，用于远端 Linux 的供应商切换和聊天迁移，版本独立于 Windows 桌面版。安装位置、受支持的 Codex 版本及测试范围见 [扩展说明](extensions/vscode/README.md)。
 
-- Windows 11 虚拟机：Sub2API 新会话实际出图、官方/API 往返切换、分页历史元数据扩容及覆盖安装。
-- GitHub 真实更新：测试版 `test.1 → test.2` 自动下载、签名校验、确认安装、自动重启及旧包重装；配置、DPAPI 凭证、会话和阅读位置保留。正式版更新地址也已验证。
-- v1.0.4：99 项 Rust 测试、3 组界面测试和 9 项隔离原生烟测通过；合成数据复现旧版偏移报错，修复后覆盖多文件索引、官方/API 往返切换及回滚。GitHub CI、发布包签名、图标及公开更新清单/下载验证通过。本轮未在报告问题的另一台电脑上复验，也未重新执行 VM 安装。
+## 开发与测试
 
-实际官方账号请求、混入模式、历史会话继续发送、完整批量故障场景，以及 Windows 系统 DPI 和长期资源验收仍未全部覆盖。详见 [验证记录](docs/VALIDATION.md)，不将构建成功视为全部功能验收完成。
-
-## 数据与迁移
-
-正式通道使用 `%LOCALAPPDATA%\EasySwitch`，测试通道使用 `%LOCALAPPDATA%\EasySwitchTest`。首次启动会检查旧 `%LOCALAPPDATA%\CodexSwitch`，导入供应商、设置、DPAPI 凭证与旧数据目录引用。必须在原 Windows 用户下执行；DPAPI 不能直接跨账户迁移。
-
-从 1.2.1 起，更新后首次启动会自动清理当前和已关联旧版目录中已结束的操作副本（Complete、Restored、RolledBack）及尚未提交的 Preparing 暂存；后续操作结束后立即清理，不再保留多轮历史备份。清理涵盖操作目录内的 .before、.after、数据库快照、重写与临时文件，以及清单关联位置中 EasySwitch 专用命名的 .restore 残留；不删除 Codex 会话、数据库、配置和认证文件。
-
-Applying、Restoring 或未知状态的操作仍保留副本，首页仅在存在中断操作时显示恢复提示。清单损坏、文件占用或路径异常会提示并保留相关文件，下次启动重试；外部修改和 SQLite WAL 保护仍然生效。菜单中的“备份恢复”已移除，主动删除会话现在是永久删除，需保留时请使用归档或先导出。
-
-切换操作会正常退出 Codex、备份与修改、校验并重启。请先完成正在生成的任务。项目关联迁移只更新历史会话的目录与项目索引，不移动项目代码。Chat 转换不能承载原生图片、加密历史或原生 compact，会明确报错。
-
-## 开发
-
-需要 Node.js 22+、Rust stable/MSVC、Windows SDK、WebView2 Runtime。
+需要 Node.js 22+、Rust stable/MSVC、Windows SDK 和 WebView2 Runtime。
 
 ```powershell
 npm ci
 npm run tauri -- dev
 ```
 
-构建内置前端的桌面程序，或生成安装包：
+构建程序或安装包：
 
 ```powershell
 ./scripts/build.ps1
 ./scripts/build.ps1 -Installer
 ```
 
-签名发行包使用 `scripts/prepare-signing.ps1` 生成一次密钥，再运行 `scripts/build-signed.ps1`。不要重新生成正在使用的签名密钥；私钥及密码材料放在 Git 忽略的 `.local` 目录。保护并另外安全备份它们，丢失私钥将无法向已安装应用发布更新。
-
-## 测试
+运行回归检查：
 
 ```powershell
 cargo test --workspace --locked
 npm run build
+node crates/core/assets/native-fast-unlock.test.cjs
 npx playwright test
-node scripts/native-smoke.cjs
 ```
 
-最后一项需要已构建的 release EXE，通过仅监听回环地址的 WebView2 调试端口验证 Easy Switch 自身，并使用独立合成目录。浏览器预览明确标记“合成数据”；它不能代替原生应用或 VM 验收。
+`node scripts/native-smoke.cjs` 使用独立合成目录检查已构建的桌面程序。浏览器测试不能代替真实客户端验收，具体结果见 [验证记录](docs/VALIDATION.md)。架构和发布流程见 [ARCHITECTURE.md](docs/ARCHITECTURE.md) 与 [RELEASING.md](docs/RELEASING.md)。
 
-架构见 [ARCHITECTURE.md](docs/ARCHITECTURE.md)，界面约定见 [DESIGN.md](DESIGN.md)，发布与通道隔离见 [RELEASING.md](docs/RELEASING.md)。
+## 许可证
+
+从 1.4.0 起，Easy Switch 以 [GNU AGPL-3.0](LICENSE) 发布。每个发行标签提供对应源码，构建所需的锁文件和脚本也在仓库中。第三方代码保留原有声明，Fast 模块的来源与本地修改见 [第三方说明](third-party/README.md)。

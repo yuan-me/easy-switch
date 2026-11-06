@@ -1,0 +1,42 @@
+EASY_SWITCH_TESTS_BEGIN
+
+running 12 tests
+test commit_guard_retains_interrupted_transaction_until_writers_stop ... ok
+test default_model_restore_refuses_nonnullable_schema_without_changing_history ... ok
+test encrypted_stream_rejects_tampering_truncation_and_frame_reordering ... ok
+test guard_failure_does_not_overwrite_external_edits_during_rollback ... ok
+test journal_setup_does_not_replace_binding_for_an_unfinished_operation ... ok
+test journal_setup_failure_leaves_no_manifest_and_releases_lock ... ok
+test model_history_without_owned_complete_snapshot_or_target_model_is_rejected ... ok
+test paginated_model_event_keeps_rebased_checkpoint_before_new_event ... ok
+test provider_switch_updates_current_model_without_rewriting_historical_model ... ok
+test semantic_verification_failure_rolls_back_before_backups_are_removed ... ok
+test unix_files_are_private_and_symlinks_are_rejected ... ok
+test unix_paths_keep_case_and_allow_valid_posix_names ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.80s
+
+TEST_RESULT remote_core 0
+
+running 15 tests
+test guard::tests::blocks_idle_codex_and_unrelated_process_writing_the_target ... ok
+test guard::tests::recognizes_only_codex_and_uses_exact_home ... ok
+test tests::another_store_cannot_inspect_switch_or_recover_an_owned_home ... ok
+test tests::appserver::real_appserver_search_keeps_appended_model_projection ... ignored, requires EASY_SWITCH_TEST_CODEX; isolated real app-server schema and search reconciliation
+test tests::concurrent_first_claim_has_one_owner_and_never_overwrites_it ... ok
+test tests::incomplete_active_index_is_rejected_before_switching ... ok
+test tests::interrupted_operation_remains_visible_even_if_live_config_is_invalid ... ok
+test tests::missing_key_and_invalid_url_do_not_touch_configuration ... ok
+test tests::model_history_without_owned_settings_is_rejected_in_preflight ... ok
+test tests::official_api_a_api_b_official_keeps_login_and_history ... ok
+test tests::official_without_config_model_uses_confirmed_model_and_restores_default_config ... ok
+test tests::rejects_collision_and_project_overrides_without_stopping_backend ... ok
+test tests::sqlite_directory_symlink_is_rejected_before_migration ... ok
+test tests::stale_configuration_and_busy_guard_leave_files_unchanged ... ok
+test tests::user_config_selects_real_database_directory_over_environment ... ok
+
+test result: ok. 14 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.72s
+
+TEST_RESULT helper_tests 0
+EASY_SWITCH_TESTS_DONE 0
+[    3.038791] reboot: Power down

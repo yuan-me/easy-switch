@@ -53,7 +53,7 @@ test('dashboard uses local today and rolling seven days, links to details, and r
  expect(errors).toEqual([]);
 });
 
-test('appearance autosaves across navigation, defaults to first blue, and recolors only dashboard decoration',async({page})=>{
+test('appearance autosaves across navigation, defaults to first blue, and preserves the app icon',async({page})=>{
  await desktop(page);const icon=await page.locator('.titlebar-drag img').getAttribute('src');
  await expect(page.locator('.current-provider .active-tag')).toHaveCount(0);
  const blueFilter=await page.locator('.provider-badge').evaluate(el=>getComputedStyle(el).filter);
@@ -142,4 +142,76 @@ test('session read failures expose retry and recover the conversation without ch
  await page.evaluate(()=>{(window as any).failScan=false});await page.getByRole('button',{name:'重试',exact:true}).click();await expect(page.locator('.session-row')).toHaveCount(4);
  await page.locator('.session-row button').filter({hasText:'仪表盘布局调整'}).click();await expect(page.getByText('无法读取会话',{exact:true})).toBeVisible();
  await page.evaluate(()=>{(window as any).failDetail=false});await page.getByRole('button',{name:'重试读取',exact:true}).click();await expect(page.locator('.message pre')).toHaveText('session-0');
+});
+
+
+test('Weekly chart fits large values and keeps tiny output proportional',async({page})=>{
+ await desktop(page);
+ await page.evaluate(()=>{
+  const w=window as any,invoke=w.__TAURI_INTERNALS__.invoke;
+  w.__TAURI_INTERNALS__.invoke=async(command:string,args:any)=>{
+   if(command!=='usage_report'||args.query.bucketStarts.length!==7)return invoke(command,args);
+   const values=[44730000,121130000,180120000,0,0,110000000,70260000];
+   const buckets=args.query.bucketStarts.map((start:number,i:number)=>({start,input:values[i],output:i===2?1000:i===5?11000000:0,cached:0}));
+   return {input:values.reduce((a,b)=>a+b,0),output:11001000,cached:0,buckets,models:[],sessions:[],availableModels:[],scannedFiles:4,warnings:[]};
+  };
+ });
+ await page.getByRole('button',{name:'刷新',exact:true}).click();
+ const chart=page.locator('.dashboard-trend'),columns=chart.locator('.usage-column');
+ await expect(columns.nth(2)).toHaveAttribute('title',/输入 180,120,000，输出 1,000 Token/);
+ const tiny=await columns.nth(2).locator('.usage-output').evaluate(el=>el.getBoundingClientRect().height);
+ expect(tiny).toBeLessThan(1);
+ expect(await columns.nth(5).locator('.usage-output').evaluate(el=>el.getBoundingClientRect().height)).toBeGreaterThan(5);
+ for(const width of [1180,1000,940]){
+  await page.setViewportSize({width,height:840});
+  await chart.scrollIntoViewIfNeeded();
+  const bounds=await chart.boundingBox();
+  const labels=chart.locator('.usage-stack small,.usage-grid span,.usage-tick');
+  for(const label of await labels.all()){
+   const box=await label.boundingBox();expect(box).not.toBeNull();
+   expect(box!.x).toBeGreaterThanOrEqual(bounds!.x+8);expect(box!.x+box!.width).toBeLessThanOrEqual(bounds!.x+bounds!.width-8);
+   expect(box!.y).toBeGreaterThan(bounds!.y);expect(box!.y+box!.height).toBeLessThan(bounds!.y+bounds!.height);
+  }
+  const numbers=await chart.locator('.usage-stack small').all();
+  for(let i=1;i<numbers.length;i++){const a=await numbers[i-1].boundingBox(),b=await numbers[i].boundingBox();expect(a!.x+a!.width).toBeLessThan(b!.x)}
+  await chart.screenshot({path:`artifacts/screenshots/chart-large-${width}.png`});
+ }
+});
+
+
+test('Theme surfaces follow every accent and keep text readable in light and dark modes',async({page},testInfo)=>{
+ test.setTimeout(60000);
+ await page.setViewportSize({width:1180,height:840});await desktop(page);
+ await page.getByRole('button',{name:'设置',exact:true}).click();
+ const samples:any[]=[];
+ for(const theme of ['浅色','深色']){
+  await page.getByRole('button',{name:theme,exact:true}).click();
+  const backgrounds=new Set<string>();
+  for(let index=0;index<11;index++){
+   if(index<9)await page.locator('.color-swatch').nth(index).click();
+   else await page.locator('.custom-color input').evaluate((el:HTMLInputElement,color)=>{Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value')!.set!.call(el,color);el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true}))},index===9?'#000000':'#ffffff');
+   await expect(page.getByTestId('settings-save-state')).toHaveText('已自动保存');
+   const sample=await page.evaluate(()=>{
+    const probe=document.createElement('span');probe.hidden=true;document.body.append(probe);
+    const canvas=document.createElement('canvas');canvas.width=canvas.height=1;const context=canvas.getContext('2d')!;
+    const rgb=(token:string)=>{probe.style.color=`var(--${token})`;context.fillStyle=getComputedStyle(probe).color;context.fillRect(0,0,1,1);return Array.from(context.getImageData(0,0,1,1).data).slice(0,3)};
+    const colors=Object.fromEntries(['bg','surface','sidebar','soft','text','muted','accent','on-accent'].map(key=>[key,rgb(key)]));probe.remove();return colors;
+   });
+   const luminance=(rgb:number[])=>rgb.map(v=>{const c=v/255;return c<=.04045?c/12.92:((c+.055)/1.055)**2.4}).reduce((sum,v,i)=>sum+v*[.2126,.7152,.0722][i],0);
+   const contrast=(a:number[],b:number[])=>{const x=luminance(a),y=luminance(b);return (Math.max(x,y)+.05)/(Math.min(x,y)+.05)};
+   for(const background of ['bg','surface','sidebar','soft'])for(const foreground of ['text','muted'])expect.soft(contrast(sample[background],sample[foreground]),`${theme} ${index} ${background}/${foreground}`).toBeGreaterThanOrEqual(4.5);
+   expect.soft(contrast(sample.accent,sample['on-accent'])).toBeGreaterThanOrEqual(4.5);
+   backgrounds.add(JSON.stringify(sample.sidebar));samples.push({theme,index,...sample});
+  }
+  expect(backgrounds.size).toBe(11);
+  for(const color of ['湖蓝','绿色']){
+   await page.getByRole('button',{name:color+'主题色',exact:true}).click();await expect(page.getByTestId('settings-save-state')).toHaveText('已自动保存');
+   await page.getByRole('button',{name:'仪表盘',exact:true}).click();await expect(page.getByTestId('dashboard-input')).toHaveText('128.4K');
+   const actual=await page.evaluate(()=>Object.fromEntries(['.window-titlebar','.sidebar','.recent-sessions thead','.daily-cache>div'].map(selector=>[selector,getComputedStyle(document.querySelector(selector)!).backgroundColor])));
+   expect(actual['.window-titlebar']).toBe(actual['.sidebar']);expect(actual['.recent-sessions thead']).toBe(actual['.daily-cache>div']);
+   await page.screenshot({path:`artifacts/screenshots/theme-${theme==='浅色'?'light':'dark'}-${color==='湖蓝'?'blue':'green'}.png`,animations:'disabled'});
+   await page.getByRole('button',{name:'设置',exact:true}).click();
+  }
+ }
+ await testInfo.attach('theme-colors',{body:JSON.stringify(samples),contentType:'application/json'});
 });

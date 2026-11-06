@@ -25,5 +25,5 @@ export function applyAppearance(settings:Pick<Settings,'theme'|'accentColor'|'co
  for(let amount=.4;dark&&luminance(color)<.25&&amount<=1;amount+=.05)color=mix(amount,255);
  root.style.setProperty('--seed',hex);
  root.style.setProperty('--accent',`rgb(${color.join(' ')})`);
- root.style.setProperty('--on-accent',dark?'#201526':'#ffffff');
+ root.style.setProperty('--on-accent',dark?'#1b1d20':'#ffffff');
 }

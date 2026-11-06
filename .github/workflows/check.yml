@@ -15,6 +15,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: npm ci
       - run: npm run build
+      - run: node crates/core/assets/native-fast-unlock.test.cjs
       - run: cargo test --workspace --locked
       - run: cargo check -p easy-switch --locked
       - run: npx playwright test

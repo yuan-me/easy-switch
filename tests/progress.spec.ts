@@ -1,4 +1,4 @@
-import {setTheme} from './helpers';
+import {setTheme,themeColor} from './helpers';
 import {test,expect,type Page} from '@playwright/test';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
@@ -41,7 +41,7 @@ test('only interrupted operations expose recovery, with external-edit errors pre
  await expect(page.getByRole('button',{name:'备份恢复',exact:true})).toHaveCount(0);
  await expect(page.getByRole('alert')).toContainText('上次操作中断');
  await page.getByRole('button',{name:'恢复中断操作',exact:true}).click();
- await expect(page.getByRole('dialog')).toContainText('检测到外部修改时停止恢复');
+ await expect(page.getByRole('dialog')).toContainText('如果发现文件被修改，会停止恢复');
  await page.getByRole('button',{name:'检查并恢复',exact:true}).click();
  await expect(page.getByRole('alert').filter({hasText:'拒绝覆盖'})).toBeVisible();
  await expect(page.getByRole('button',{name:'恢复中断操作',exact:true})).toBeEnabled();
@@ -58,7 +58,7 @@ test('opaque fallback in both themes, Mica opt-in, and text selection',async({pa
  await expect(page).toHaveTitle('Easy Switch');
  expect(page.url()).toBe('http://127.0.0.1:1420/');
  await expect(page.locator('html')).toHaveAttribute('data-backdrop','solid');
- await expect(page.locator('.app-shell')).toHaveCSS('background-color','rgb(243, 239, 244)');
+ await expect(page.locator('.app-shell')).toHaveCSS('background-color',await themeColor(page,'--sidebar'));
  await expect(page.locator('h1')).toHaveCSS('user-select','none');
  await page.getByRole('heading',{name:'供应商',exact:true}).dblclick();
  expect(await page.evaluate(()=>getSelection()?.toString())).toBe('');
@@ -66,7 +66,7 @@ test('opaque fallback in both themes, Mica opt-in, and text selection',async({pa
  expect(await search.evaluate(el=>(el as HTMLInputElement).selectionEnd!-(el as HTMLInputElement).selectionStart!)).toBe(4);
  await search.fill('');
  await setTheme(page,'深色');
- await expect(page.locator('.app-shell')).toHaveCSS('background-color','rgb(33, 30, 37)');
+ await expect(page.locator('.app-shell')).toHaveCSS('background-color',await themeColor(page,'--sidebar'));
  await expect(page.locator('.operation-progress')).toHaveCount(0);
  await setTheme(page,'跟随系统');
  await page.emulateMedia({colorScheme:'dark'});
@@ -81,14 +81,14 @@ test('opaque fallback in both themes, Mica opt-in, and text selection',async({pa
 test('Mica is enabled only when the native operation succeeds',async({page})=>{
  await desktop(page,true);
  await expect(page.locator('html')).toHaveAttribute('data-backdrop','mica');
- await expect(page.locator('.app-shell')).toHaveCSS('background-color','rgba(243, 239, 244, 0.5)');
+ await expect(page.locator('.app-shell')).toHaveCSS('background-color',await themeColor(page,'--sidebar'));
  await expect(page.locator('body')).toHaveCSS('background-color','rgba(0, 0, 0, 0)');
 });
 
 test('appearance errors retain the opaque fallback',async({page})=>{
  await desktop(page,'error');
  await expect(page.locator('html')).toHaveAttribute('data-backdrop','solid');
- await expect(page.locator('.app-shell')).toHaveCSS('background-color','rgb(243, 239, 244)');
+ await expect(page.locator('.app-shell')).toHaveCSS('background-color',await themeColor(page,'--sidebar'));
  await expect.poll(()=>page.evaluate(()=>(window as any).calls.includes('window_ready'))).toBe(true);
 });
 
@@ -140,17 +140,17 @@ test('editor avoids full-window blur and translucent animation; resize queries a
 test('confirmation and progress remain opaque over Mica in both themes',async({page})=>{
  const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
  await desktop(page,true);
- for(const [theme,color] of [['浅色','rgb(255, 252, 255)'],['深色','rgb(44, 39, 50)']]){
+ for(const theme of ['浅色','深色']){
   await setTheme(page,theme);
   await page.getByRole('button',{name:'切换',exact:true}).click();
   const dialog=page.getByRole('dialog');
   await expect(dialog).toBeVisible();
-  await expect(dialog).toHaveCSS('background-color',color);
-  await expect(dialog.locator('.modal-footer')).toHaveCSS('background-color',color);
+  await expect(dialog).toHaveCSS('background-color',await themeColor(page));
+  await expect(dialog.locator('.modal-footer')).toHaveCSS('background-color',await themeColor(page));
   await page.screenshot({animations:'disabled',path:join(tmpdir(),`easy-switch-confirm-${theme==='浅色'?'light':'dark'}.png`)});
   await dialog.getByRole('button',{name:'切换并重启',exact:true}).click();
   await expect(page.locator('.operation-progress')).toBeVisible();
-  await expect(page.locator('.operation-progress')).toHaveCSS('background-color',color);
+  await expect(page.locator('.operation-progress')).toHaveCSS('background-color',await themeColor(page));
   await page.evaluate(()=>(window as any).finish());
   await expect(page.locator('.operation-progress')).toHaveCount(0);
  }
@@ -171,15 +171,15 @@ test('switch progress, elapsed time, safe commit, completion and cancellation',a
  await expect(page.locator('progress')).not.toHaveAttribute('value');
  await page.clock.fastForward(16000);
  await expect(page.locator('.progress-meta')).toContainText('已用 16 秒');
- await expect(page.locator('.progress-meta')).toContainText('最近进展在');
+ await expect(page.locator('.progress-meta')).toContainText('上次更新在');
  await emit('修复会话','备份并修复分页历史文件',38,77);
- await expect(page.locator('.operation-progress')).toContainText('当前子任务 49%');
+ await expect(page.locator('.operation-progress')).toContainText('当前步骤 49%');
  await expect(page.locator('progress')).toHaveAttribute('value','38');
  await expect(page.locator('progress')).toHaveAttribute('max','77');
  await expect(page.getByRole('button',{name:'备份恢复',exact:true})).toHaveCount(0);
  await page.getByRole('button',{name:'设置',exact:true}).click();
  await page.clock.runFor(300);
- await expect(page.locator('.operation-progress')).toHaveCSS('background-color','rgb(255, 252, 255)');
+ await expect(page.locator('.operation-progress')).toHaveCSS('background-color',await themeColor(page));
  await expect(page.locator('.operation-progress')).not.toHaveCSS('box-shadow','none');
  await page.screenshot({animations:'disabled',path:join(tmpdir(),'easy-switch-progress-light.png')});
  await page.setViewportSize({width:940,height:620});
@@ -190,7 +190,7 @@ test('switch progress, elapsed time, safe commit, completion and cancellation',a
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
  await page.screenshot({animations:'disabled',path:join(tmpdir(),'easy-switch-progress-minimum.png')});
  await page.emulateMedia({colorScheme:'dark'});
- await expect(page.locator('.operation-progress')).toHaveCSS('background-color','rgb(44, 39, 50)');
+ await expect(page.locator('.operation-progress')).toHaveCSS('background-color',await themeColor(page));
  await page.getByRole('button',{name:'取消',exact:true}).focus();
  await page.keyboard.press('Shift+Tab');
  await page.keyboard.press('Tab');

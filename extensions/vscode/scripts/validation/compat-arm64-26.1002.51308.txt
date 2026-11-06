@@ -1,0 +1,89 @@
+EASY_SWITCH_TESTS_BEGIN
+codex-cli 0.162.0-alpha.2
+
+running 1 test
+test tests::appserver::real_appserver_search_keeps_appended_model_projection ... codex-cli 0.162.0-alpha.2
+initialize: {"userAgent":"easy_switch_projection_test/0.162.0-alpha.2 (Linux Unknown; aarch64) unknown (easy_switch_projection_test; 0.1.0)","codexHome":"/probe/artifacts/appserver-proof-ecO8Wk/codex","platformFamily":"unix","platformOs":"linux"}
+Official-created threads schema: CREATE TABLE threads (
+    id TEXT PRIMARY KEY,
+    rollout_path TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    source TEXT NOT NULL,
+    model_provider TEXT NOT NULL,
+    cwd TEXT NOT NULL,
+    title TEXT NOT NULL,
+    sandbox_policy TEXT NOT NULL,
+    approval_mode TEXT NOT NULL,
+    tokens_used INTEGER NOT NULL DEFAULT 0,
+    has_user_event INTEGER NOT NULL DEFAULT 0,
+    archived INTEGER NOT NULL DEFAULT 0,
+    archived_at INTEGER,
+    git_sha TEXT,
+    git_branch TEXT,
+    git_origin_url TEXT
+, cli_version TEXT NOT NULL DEFAULT '', first_user_message TEXT NOT NULL DEFAULT '', agent_nickname TEXT, agent_role TEXT, memory_mode TEXT NOT NULL DEFAULT 'enabled', model TEXT, reasoning_effort TEXT, agent_path TEXT, created_at_ms INTEGER, updated_at_ms INTEGER, thread_source TEXT, preview TEXT NOT NULL DEFAULT '', recency_at INTEGER NOT NULL DEFAULT 0, recency_at_ms INTEGER NOT NULL DEFAULT 0, history_mode TEXT NOT NULL DEFAULT 'legacy', name TEXT, is_pinned INTEGER NOT NULL DEFAULT 0, thread_section_id TEXT
+    REFERENCES thread_sections(id) ON DELETE SET NULL, section_position INTEGER, section_entered_at_ms INTEGER, project_id TEXT
+    REFERENCES projects(id) ON DELETE SET NULL, originator TEXT, daybreak_enabled BOOLEAN, creator_user_id TEXT, creator_account_id TEXT)
+initialize: {"userAgent":"easy_switch_projection_test/0.162.0-alpha.2 (Linux Unknown; aarch64) unknown (easy_switch_projection_test; 0.1.0)","codexHome":"/probe/artifacts/appserver-proof-ecO8Wk/codex","platformFamily":"unix","platformOs":"linux"}
+PASS resume a: original thread, provider=easy_switch_vscode, model=api-a-model
+Search result: {"data":[{"id":"dc6b9584-cb06-4bf8-98c9-5360f3ced2da","environments":null,"extra":null,"sessionId":"dc6b9584-cb06-4bf8-98c9-5360f3ced2da","forkedFromId":null,"parentThreadId":null,"preview":"Easy Switch isolated projection proof","ephemeral":false,"section":null,"sectionEnteredAt":null,"projectId":null,"historyMode":"legacy","modelProvider":"easy_switch_vscode","model":"api-a-model","reasoningEffort":null,"createdAt":1793232000,"updatedAt":1793330685,"recencyAt":1793232000,"status":{"type":"notLoaded"},"path":"/probe/artifacts/appserver-proof-ecO8Wk/codex/sessions/2026/10/29/rollout-2026-10-29T00-00-00-dc6b9584-cb06-4bf8-98c9-5360f3ced2da.jsonl","cwd":"/probe/artifacts/appserver-proof-ecO8Wk/project","cliVersion":"0.162.0-alpha.2","originator":"easy_switch_projection_test","source":"vscode","canAcceptDirectInput":null,"threadSource":null,"agentNickname":null,"agentRole":null,"gitInfo":null,"name":null,"daybreakEnabled":null,"turns":[]}],"nextCursor":null,"backwardsCursor":"2026-10-28T23:59:59.999Z"}; database projection: ("easy_switch_vscode", "api-a-model")
+PASS a: real thread/list(searchTerm) rebuilt poisoned SQLite -> provider=easy_switch_vscode, model=api-a-model; original history preserved
+initialize: {"userAgent":"easy_switch_projection_test/0.162.0-alpha.2 (Linux Unknown; aarch64) unknown (easy_switch_projection_test; 0.1.0)","codexHome":"/probe/artifacts/appserver-proof-ecO8Wk/codex","platformFamily":"unix","platformOs":"linux"}
+PASS resume b: original thread, provider=easy_switch_vscode, model=api-b-model
+Search result: {"data":[{"id":"dc6b9584-cb06-4bf8-98c9-5360f3ced2da","environments":null,"extra":null,"sessionId":"dc6b9584-cb06-4bf8-98c9-5360f3ced2da","forkedFromId":null,"parentThreadId":null,"preview":"Easy Switch isolated projection proof","ephemeral":false,"section":null,"sectionEnteredAt":null,"projectId":null,"historyMode":"legacy","modelProvider":"easy_switch_vscode","model":"api-b-model","reasoningEffort":null,"createdAt":1793232000,"updatedAt":1793330686,"recencyAt":1793232000,"status":{"type":"notLoaded"},"path":"/probe/artifacts/appserver-proof-ecO8Wk/codex/sessions/2026/10/29/rollout-2026-10-29T00-00-00-dc6b9584-cb06-4bf8-98c9-5360f3ced2da.jsonl","cwd":"/probe/artifacts/appserver-proof-ecO8Wk/project","cliVersion":"0.162.0-alpha.2","originator":"easy_switch_projection_test","source":"vscode","canAcceptDirectInput":null,"threadSource":null,"agentNickname":null,"agentRole":null,"gitInfo":null,"name":null,"daybreakEnabled":null,"turns":[]}],"nextCursor":null,"backwardsCursor":"2026-10-28T23:59:59.999Z"}; database projection: ("easy_switch_vscode", "api-b-model")
+PASS b: real thread/list(searchTerm) rebuilt poisoned SQLite -> provider=easy_switch_vscode, model=api-b-model; original history preserved
+initialize: {"userAgent":"easy_switch_projection_test/0.162.0-alpha.2 (Linux Unknown; aarch64) unknown (easy_switch_projection_test; 0.1.0)","codexHome":"/probe/artifacts/appserver-proof-ecO8Wk/codex","platformFamily":"unix","platformOs":"linux"}
+PASS resume official: original thread, provider=openai, model=official-model
+Search result: {"data":[{"id":"dc6b9584-cb06-4bf8-98c9-5360f3ced2da","environments":null,"extra":null,"sessionId":"dc6b9584-cb06-4bf8-98c9-5360f3ced2da","forkedFromId":null,"parentThreadId":null,"preview":"Easy Switch isolated projection proof","ephemeral":false,"section":null,"sectionEnteredAt":null,"projectId":null,"historyMode":"legacy","modelProvider":"openai","model":"official-model","reasoningEffort":null,"createdAt":1793232000,"updatedAt":1793330687,"recencyAt":1793232000,"status":{"type":"notLoaded"},"path":"/probe/artifacts/appserver-proof-ecO8Wk/codex/sessions/2026/10/29/rollout-2026-10-29T00-00-00-dc6b9584-cb06-4bf8-98c9-5360f3ced2da.jsonl","cwd":"/probe/artifacts/appserver-proof-ecO8Wk/project","cliVersion":"0.162.0-alpha.2","originator":"easy_switch_projection_test","source":"vscode","canAcceptDirectInput":null,"threadSource":null,"agentNickname":null,"agentRole":null,"gitInfo":null,"name":null,"daybreakEnabled":null,"turns":[]}],"nextCursor":null,"backwardsCursor":"2026-10-28T23:59:59.999Z"}; database projection: ("openai", "official-model")
+PASS official: real thread/list(searchTerm) rebuilt poisoned SQLite -> provider=openai, model=official-model; original history preserved
+PASS isolated real schema/parser/reconciliation; no account or turn/start requests
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 16 filtered out; finished in 5.85s
+
+TEST_RESULT helper 0
+Isolated app-server projection validation; synthetic data only.
+codex-cli 0.162.0-alpha.2
+[2m2026-10-30T03:24:44.269483Z[0m [31mERROR[0m [2mcodex_app_server[0m[2m:[0m Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.
+initialize: {"userAgent":"easy_switch_projection_test/0.162.0-alpha.2 (Linux Unknown; aarch64) unknown (easy_switch_projection_test; 0.1.0)","codexHome":"/probe/artifacts/appserver-proof-ecO8Wk/codex","platformFamily":"unix","platformOs":"linux"}
+Official-created threads schema: CREATE TABLE threads (
+    id TEXT PRIMARY KEY,
+    rollout_path TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    source TEXT NOT NULL,
+    model_provider TEXT NOT NULL,
+    cwd TEXT NOT NULL,
+    title TEXT NOT NULL,
+    sandbox_policy TEXT NOT NULL,
+    approval_mode TEXT NOT NULL,
+    tokens_used INTEGER NOT NULL DEFAULT 0,
+    has_user_event INTEGER NOT NULL DEFAULT 0,
+    archived INTEGER NOT NULL DEFAULT 0,
+    archived_at INTEGER,
+    git_sha TEXT,
+    git_branch TEXT,
+    git_origin_url TEXT
+, cli_version TEXT NOT NULL DEFAULT '', first_user_message TEXT NOT NULL DEFAULT '', agent_nickname TEXT, agent_role TEXT, memory_mode TEXT NOT NULL DEFAULT 'enabled', model TEXT, reasoning_effort TEXT, agent_path TEXT, created_at_ms INTEGER, updated_at_ms INTEGER, thread_source TEXT, preview TEXT NOT NULL DEFAULT '', recency_at INTEGER NOT NULL DEFAULT 0, recency_at_ms INTEGER NOT NULL DEFAULT 0, history_mode TEXT NOT NULL DEFAULT 'legacy', name TEXT, is_pinned INTEGER NOT NULL DEFAULT 0, thread_section_id TEXT
+    REFERENCES thread_sections(id) ON DELETE SET NULL, section_position INTEGER, section_entered_at_ms INTEGER, project_id TEXT
+    REFERENCES projects(id) ON DELETE SET NULL, originator TEXT, daybreak_enabled BOOLEAN, creator_user_id TEXT, creator_account_id TEXT)
+[2m2026-10-30T03:24:45.470616Z[0m [31mERROR[0m [2mcodex_app_server[0m[2m:[0m Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.
+initialize: {"userAgent":"easy_switch_projection_test/0.162.0-alpha.2 (Linux Unknown; aarch64) unknown (easy_switch_projection_test; 0.1.0)","codexHome":"/probe/artifacts/appserver-proof-ecO8Wk/codex","platformFamily":"unix","platformOs":"linux"}
+PASS resume a: original thread, provider=easy_switch_vscode, model=api-a-model
+Search result: {"data":[{"id":"dc6b9584-cb06-4bf8-98c9-5360f3ced2da","environments":null,"extra":null,"sessionId":"dc6b9584-cb06-4bf8-98c9-5360f3ced2da","forkedFromId":null,"parentThreadId":null,"preview":"Easy Switch isolated projection proof","ephemeral":false,"section":null,"sectionEnteredAt":null,"projectId":null,"historyMode":"legacy","modelProvider":"easy_switch_vscode","model":"api-a-model","reasoningEffort":null,"createdAt":1793232000,"updatedAt":1793330685,"recencyAt":1793232000,"status":{"type":"notLoaded"},"path":"/probe/artifacts/appserver-proof-ecO8Wk/codex/sessions/2026/10/29/rollout-2026-10-29T00-00-00-dc6b9584-cb06-4bf8-98c9-5360f3ced2da.jsonl","cwd":"/probe/artifacts/appserver-proof-ecO8Wk/project","cliVersion":"0.162.0-alpha.2","originator":"easy_switch_projection_test","source":"vscode","canAcceptDirectInput":null,"threadSource":null,"agentNickname":null,"agentRole":null,"gitInfo":null,"name":null,"daybreakEnabled":null,"turns":[]}],"nextCursor":null,"backwardsCursor":"2026-10-28T23:59:59.999Z"}; database projection: ("easy_switch_vscode", "api-a-model")
+PASS a: real thread/list(searchTerm) rebuilt poisoned SQLite -> provider=easy_switch_vscode, model=api-a-model; original history preserved
+[2m2026-10-30T03:24:47.100149Z[0m [31mERROR[0m [2mcodex_app_server[0m[2m:[0m Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.
+initialize: {"userAgent":"easy_switch_projection_test/0.162.0-alpha.2 (Linux Unknown; aarch64) unknown (easy_switch_projection_test; 0.1.0)","codexHome":"/probe/artifacts/appserver-proof-ecO8Wk/codex","platformFamily":"unix","platformOs":"linux"}
+PASS resume b: original thread, provider=easy_switch_vscode, model=api-b-model
+Search result: {"data":[{"id":"dc6b9584-cb06-4bf8-98c9-5360f3ced2da","environments":null,"extra":null,"sessionId":"dc6b9584-cb06-4bf8-98c9-5360f3ced2da","forkedFromId":null,"parentThreadId":null,"preview":"Easy Switch isolated projection proof","ephemeral":false,"section":null,"sectionEnteredAt":null,"projectId":null,"historyMode":"legacy","modelProvider":"easy_switch_vscode","model":"api-b-model","reasoningEffort":null,"createdAt":1793232000,"updatedAt":1793330686,"recencyAt":1793232000,"status":{"type":"notLoaded"},"path":"/probe/artifacts/appserver-proof-ecO8Wk/codex/sessions/2026/10/29/rollout-2026-10-29T00-00-00-dc6b9584-cb06-4bf8-98c9-5360f3ced2da.jsonl","cwd":"/probe/artifacts/appserver-proof-ecO8Wk/project","cliVersion":"0.162.0-alpha.2","originator":"easy_switch_projection_test","source":"vscode","canAcceptDirectInput":null,"threadSource":null,"agentNickname":null,"agentRole":null,"gitInfo":null,"name":null,"daybreakEnabled":null,"turns":[]}],"nextCursor":null,"backwardsCursor":"2026-10-28T23:59:59.999Z"}; database projection: ("easy_switch_vscode", "api-b-model")
+PASS b: real thread/list(searchTerm) rebuilt poisoned SQLite -> provider=easy_switch_vscode, model=api-b-model; original history preserved
+[2m2026-10-30T03:24:48.150522Z[0m [31mERROR[0m [2mcodex_app_server[0m[2m:[0m Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.
+initialize: {"userAgent":"easy_switch_projection_test/0.162.0-alpha.2 (Linux Unknown; aarch64) unknown (easy_switch_projection_test; 0.1.0)","codexHome":"/probe/artifacts/appserver-proof-ecO8Wk/codex","platformFamily":"unix","platformOs":"linux"}
+PASS resume official: original thread, provider=openai, model=official-model
+[2m2026-10-30T03:24:48.805985Z[0m [31mERROR[0m [2mcodex_api::endpoint::responses_websocket[0m[2m:[0m failed to connect to websocket: IO error: Network unreachable (os error 101), url: wss://api.openai.com/v1/responses
+Search result: {"data":[{"id":"dc6b9584-cb06-4bf8-98c9-5360f3ced2da","environments":null,"extra":null,"sessionId":"dc6b9584-cb06-4bf8-98c9-5360f3ced2da","forkedFromId":null,"parentThreadId":null,"preview":"Easy Switch isolated projection proof","ephemeral":false,"section":null,"sectionEnteredAt":null,"projectId":null,"historyMode":"legacy","modelProvider":"openai","model":"official-model","reasoningEffort":null,"createdAt":1793232000,"updatedAt":1793330687,"recencyAt":1793232000,"status":{"type":"notLoaded"},"path":"/probe/artifacts/appserver-proof-ecO8Wk/codex/sessions/2026/10/29/rollout-2026-10-29T00-00-00-dc6b9584-cb06-4bf8-98c9-5360f3ced2da.jsonl","cwd":"/probe/artifacts/appserver-proof-ecO8Wk/project","cliVersion":"0.162.0-alpha.2","originator":"easy_switch_projection_test","source":"vscode","canAcceptDirectInput":null,"threadSource":null,"agentNickname":null,"agentRole":null,"gitInfo":null,"name":null,"daybreakEnabled":null,"turns":[]}],"nextCursor":null,"backwardsCursor":"2026-10-28T23:59:59.999Z"}; database projection: ("openai", "official-model")
+PASS official: real thread/list(searchTerm) rebuilt poisoned SQLite -> provider=openai, model=official-model; original history preserved
+PASS isolated real schema/parser/reconciliation; no account or turn/start requests
+EASY_SWITCH_TESTS_DONE 0
+[   10.019024] reboot: Power down

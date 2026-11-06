@@ -6,6 +6,7 @@ pub mod diagnostics;
 pub mod history;
 pub mod journal;
 pub mod model;
+pub mod native_fast;
 pub mod protocol;
 pub mod runtime;
 pub mod service;

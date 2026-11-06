@@ -2,6 +2,7 @@
 name = "easy-switch-core"
 version = "1.0.0"
 edition = "2024"
+license = "AGPL-3.0-only"
 
 [dependencies]
 anyhow = "1"
@@ -18,6 +19,7 @@ rusqlite = { version = "0.32", features = ["bundled", "backup"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
 tokio = { version = "1", features = ["full"] }
 tokio-util = "0.7"
+tokio-tungstenite = { version = "0.28", default-features = false, features = ["connect", "handshake"] }
 axum = "0.8"
 futures-util = "0.3"
 async-stream = "0.3"
@@ -27,6 +29,9 @@ url = "2"
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.61", features = ["Win32_Foundation", "Win32_Security_Cryptography", "Win32_System_Memory", "Win32_UI_WindowsAndMessaging", "Win32_UI_Input_KeyboardAndMouse", "Win32_System_Com", "Win32_UI_Shell"] }
+
+[target.'cfg(not(windows))'.dependencies]
+aes-gcm = "0.10"
 
 [dev-dependencies]
 tempfile = "3"

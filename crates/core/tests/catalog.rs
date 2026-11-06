@@ -224,6 +224,30 @@ fn saving_a_new_default_allows_removing_the_previous_default() {
 }
 
 #[test]
+fn manual_fast_model_is_staged_without_network_discovery_and_can_be_removed() {
+    let (_temp, store, settings, mut provider) = fixture();
+    provider.native_fast_unlock = Some(true);
+    let mut catalogs = catalog::load(&store).unwrap();
+    catalogs.providers.clear();
+    store.save("model-catalogs.json", &catalogs).unwrap();
+    let original = fs::read_to_string(settings.codex_home.join("config.toml")).unwrap();
+    let mut config = original.clone();
+    let mut journal = Journal::new(&store.root, "Fast fixture").unwrap();
+    catalog::stage_for_provider(&mut journal, &store, &provider, &settings, &mut config).unwrap();
+    journal.commit().unwrap();
+    let document: Value = serde_json::from_slice(&fs::read(settings.codex_home.join("easy-switch-models.json")).unwrap()).unwrap();
+    let model = document["models"].as_array().unwrap().iter().find(|v| v["slug"] == "default").unwrap();
+    assert_eq!(model["service_tiers"][0]["id"], "priority");
+    assert_eq!(model["additional_speed_tiers"], json!(["fast"]));
+    drop(journal);
+    provider.native_fast_unlock = Some(false);
+    let mut journal = Journal::new(&store.root, "Disable Fast fixture").unwrap();
+    catalog::stage_for_provider(&mut journal, &store, &provider, &settings, &mut config).unwrap();
+    assert!(!config.contains("easy-switch-models.json"));
+    assert!(original.contains("model_provider"));
+}
+
+#[test]
 #[ignore = "requires CODEX_TEST_EXECUTABLE; starts an isolated app-server with synthetic models"]
 fn generated_catalog_is_accepted_by_codex_model_list() {
     use std::{
@@ -235,12 +259,11 @@ fn generated_catalog_is_accepted_by_codex_model_list() {
     let executable = std::env::var_os("CODEX_TEST_EXECUTABLE").expect("set CODEX_TEST_EXECUTABLE");
     let temp = tempfile::tempdir().unwrap();
     let path = temp.path().join("models.json");
+    let mut document = catalog::model_document(&names(&["synthetic-model-one", "synthetic-model-two"]), &[]);
+    native_fast::model_tiers(&mut document["models"][0], true);
     fs::write(
         &path,
-        serde_json::to_vec(&catalog::model_document(
-            &names(&["synthetic-model-one", "synthetic-model-two"]),
-            &[],
-        ))
+        serde_json::to_vec(&document)
         .unwrap(),
     )
     .unwrap();
@@ -302,6 +325,7 @@ fn generated_catalog_is_accepted_by_codex_model_list() {
                     ids == ["synthetic-model-one", "synthetic-model-two"],
                     "unexpected models: {ids:?}"
                 );
+                anyhow::ensure!(list[0]["serviceTiers"].as_array().is_some_and(|tiers| tiers.iter().any(|tier| tier["id"] == "priority")), "Codex did not expose priority metadata: {}", list[0]);
                 break;
             }
         }
@@ -310,4 +334,27 @@ fn generated_catalog_is_accepted_by_codex_model_list() {
     let _ = child.kill();
     let _ = child.wait();
     result.unwrap();
+}
+
+
+#[test]
+fn fast_tracks_displayed_models_after_selection_and_refresh() {
+    let (_temp, store, settings, mut provider) = fixture();
+    provider.native_fast_unlock = Some(true);
+    provider.fast_models = names(&["obsolete"]);
+    store.save_provider(provider, None).unwrap();
+    let mut catalogs = catalog::load(&store).unwrap();
+    let list = catalogs.providers.entry("api".into()).or_default();
+    list.refresh(names(&["default", "shown", "hidden"]), 1).unwrap();
+    list.select(names(&["hidden"]), "default").unwrap();
+    catalog::save(&store, catalogs, "api", None).unwrap();
+    for expected in [names(&["default", "shown"]), names(&["default", "new"])] {
+        let document: Value = serde_json::from_slice(&fs::read(settings.codex_home.join("easy-switch-models.json")).unwrap()).unwrap();
+        let models = document["models"].as_array().unwrap();
+        assert_eq!(models.iter().map(|m| m["slug"].as_str().unwrap().to_owned()).collect::<Vec<_>>(), expected);
+        assert!(models.iter().all(|m| m["additional_speed_tiers"] == json!(["fast"])));
+        let mut catalogs = catalog::load(&store).unwrap();
+        catalogs.providers.get_mut("api").unwrap().refresh(names(&["default", "hidden", "new"]), 2).unwrap();
+        catalog::save(&store, catalogs, "api", None).unwrap();
+    }
 }

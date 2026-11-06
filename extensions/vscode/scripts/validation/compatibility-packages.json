@@ -1,0 +1,135 @@
+[
+  {
+    "extensionVersion": "26.1002.51308",
+    "arch": "arm64",
+    "vsixSha256": "e2c30cd8f85abd625bcd6181ab7c6f00f8e2d76c364ead55427b064d97a64c42",
+    "files": {
+      "extension/package.json": {
+        "bytes": 8467,
+        "sha256": "2ce8a0bf0f13bbddbc1f08ea16a31d33e0d05c39473c2b0eec98b8f732536893"
+      },
+      "extension/out/extension.js": {
+        "bytes": 2540960,
+        "sha256": "bc0b44429768ea49c559c6a5524dcd710c500d6193f3bfe62c81cab75c18661c"
+      },
+      "extension/bin/linux-aarch64/codex": {
+        "bytes": 253817032,
+        "sha256": "74222c5da1897c2ddf355575f2d60bb132bca331c3560411585b96c46646b5dc"
+      }
+    }
+  },
+  {
+    "extensionVersion": "26.1002.51308",
+    "arch": "x64",
+    "vsixSha256": "4877330e3314b0f8d1467fd29113d1758e5f40656b31ade07f612156d7036ade",
+    "files": {
+      "extension/package.json": {
+        "bytes": 8467,
+        "sha256": "2ce8a0bf0f13bbddbc1f08ea16a31d33e0d05c39473c2b0eec98b8f732536893"
+      },
+      "extension/out/extension.js": {
+        "bytes": 2540960,
+        "sha256": "bc0b44429768ea49c559c6a5524dcd710c500d6193f3bfe62c81cab75c18661c"
+      },
+      "extension/bin/linux-x86_64/codex": {
+        "bytes": 292067592,
+        "sha256": "3b1015a94344ae22f8556b22ab86f22a2d66a436a36f493a1583088e0831efe1"
+      }
+    }
+  },
+  {
+    "extensionVersion": "26.1007.21434",
+    "arch": "arm64",
+    "vsixSha256": "a4db0543a634d2f151f0eab53233f8c57458d2503e5338c852add5d278df276f",
+    "files": {
+      "extension/package.json": {
+        "bytes": 8467,
+        "sha256": "fa0b6df79be88e4c7ec18fb647cd305edef557a3cc96d89e60c297c6f0990ae3"
+      },
+      "extension/out/extension.js": {
+        "bytes": 2539539,
+        "sha256": "a8069de80c8f8141481d033f94c3a95e1b59f399143cb2554d3f68469dfbe5b8"
+      },
+      "extension/bin/linux-aarch64/codex": {
+        "bytes": 254603848,
+        "sha256": "fc01c470d900af0dc1cdcba7b8074bfe1c3a04ec53fbdf403704c94b94d59267"
+      }
+    }
+  },
+  {
+    "extensionVersion": "26.1007.21434",
+    "arch": "x64",
+    "vsixSha256": "906e5732c4ef39360afca08342b819678b684214cebec09386fce223fd2f3656",
+    "files": {
+      "extension/package.json": {
+        "bytes": 8467,
+        "sha256": "fa0b6df79be88e4c7ec18fb647cd305edef557a3cc96d89e60c297c6f0990ae3"
+      },
+      "extension/out/extension.js": {
+        "bytes": 2539539,
+        "sha256": "a8069de80c8f8141481d033f94c3a95e1b59f399143cb2554d3f68469dfbe5b8"
+      },
+      "extension/bin/linux-x86_64/codex": {
+        "bytes": 294451848,
+        "sha256": "73b73b048546993298234a295de01ef2424e7a8b29def9d0ecb1ca7cb77500d4"
+      }
+    }
+  },
+  {
+    "extensionVersion": "26.1021.22027",
+    "arch": "x64",
+    "vsixSha256": "9a5c1aa4b50d0eb9b9c06c3d7ffd18e1e7fa4591da85b1973bd1629e4db75fa9",
+    "files": {
+      "extension/package.json": {
+        "bytes": 8463,
+        "sha256": "3ab6f1fd15c39d64e18bb5b689044c6b0590349fa1b7ada98ea4b0ccd5eeb94f"
+      },
+      "extension/out/extension.js": {
+        "bytes": 2577750,
+        "sha256": "a9cc6736cd2c2d22f6cf43fc5763d5f8a873e4f741f522b44a600b1926f4e627"
+      },
+      "extension/bin/linux-x86_64/codex": {
+        "bytes": 308163880,
+        "sha256": "e6d386e8822288f6d5f327e966a5a5e1de928de8795bb6149716005a410f38f2"
+      }
+    }
+  },
+  {
+    "extensionVersion": "26.51021.22027",
+    "arch": "arm64",
+    "vsixSha256": "2967186ea121499629c28856716a148a50133ef35fa63c79348e1da973a608a9",
+    "files": {
+      "extension/package.json": {
+        "bytes": 8464,
+        "sha256": "c3beaee7a1e4a54fd125abeb6e5cae4d15c89a79bc649b29ecc4772a33640bda"
+      },
+      "extension/out/extension.js": {
+        "bytes": 2577750,
+        "sha256": "a9cc6736cd2c2d22f6cf43fc5763d5f8a873e4f741f522b44a600b1926f4e627"
+      },
+      "extension/bin/linux-aarch64/codex": {
+        "bytes": 268045528,
+        "sha256": "49c0be77a6ea76964f63f8224402dd4bbf6e9041083bc83bfc53d60f4b555577"
+      }
+    }
+  },
+  {
+    "extensionVersion": "26.51021.22027",
+    "arch": "x64",
+    "vsixSha256": "08e18d1d3f7a056e55e3ada27edefe967fdbc7a68ea67ccf89563f87bcd5304f",
+    "files": {
+      "extension/package.json": {
+        "bytes": 8464,
+        "sha256": "c3beaee7a1e4a54fd125abeb6e5cae4d15c89a79bc649b29ecc4772a33640bda"
+      },
+      "extension/out/extension.js": {
+        "bytes": 2577750,
+        "sha256": "a9cc6736cd2c2d22f6cf43fc5763d5f8a873e4f741f522b44a600b1926f4e627"
+      },
+      "extension/bin/linux-x86_64/codex": {
+        "bytes": 308163880,
+        "sha256": "e6d386e8822288f6d5f327e966a5a5e1de928de8795bb6149716005a410f38f2"
+      }
+    }
+  }
+]

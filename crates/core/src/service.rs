@@ -18,7 +18,8 @@ pub fn switch(
 ) -> Result<String> {
     report(&progress, "检查配置", "验证供应商与本地配置", true);
     let mut settings = store.settings()?;
-    p.validate(&store.providers()?)?;
+    let providers = store.providers()?;
+    p.validate(&providers)?;
     if p.runtime() {
         store.runtime_key()?;
         settings = store.settings()?;
@@ -36,9 +37,8 @@ pub fn switch(
     }
     .map(crypto::unprotect)
     .transpose()?;
-    let old = store
-        .providers()?
-        .into_iter()
+    let old = providers
+        .iter()
         .find(|p| Some(&p.id) == settings.active_provider_id.as_ref());
     let mut next = config::update(
         &before,
@@ -49,7 +49,7 @@ pub fn switch(
     )?;
     ensure!(!ct.is_cancelled(), "操作已取消");
     let mut j = Journal::new(&store.root, &format!("切换供应商：{}", p.name))?;
-    report(&progress, "退出 Codex", "等待目标桌面实例正常退出", true);
+    report(&progress, "退出 Codex", "等待 Codex 正常退出", true);
     host.stop()?;
     runtime::stop_blocking(store)?;
     let scan = sessions::Scanner::default().scan_with_progress(&settings, ct, &progress)?;
@@ -96,8 +96,22 @@ pub fn switch(
     if p.runtime() {
         runtime::ensure_started_blocking(store)?;
     }
-    host.start()
-        .context("配置已经提交，但 Codex 启动失败；请手动启动或重新切换供应商")
+    let message = host.start(p.native_fast_enabled())
+        .map_err(|e| anyhow::anyhow!("配置已保存。{}", runtime::safe_error(&e)))?;
+    if p.native_fast_unlock == Some(true)
+        && matches!(p.mode, AuthMode::Api | AuthMode::Aggregate)
+        && !native_fast::supports_model(p, &providers, &p.model, &catalog::load(store)?)
+    {
+        let reason = if p.mode == AuthMode::Aggregate {
+            "聚合组需要至少一个已启用成员，且所有成员都使用 Responses 协议。"
+        } else if p.protocol != Protocol::Responses {
+            "Fast 仅支持 Responses 协议。"
+        } else {
+            "请在供应商设置中选择要显示的模型。"
+        };
+        return Ok(format!("Codex 已启动。{reason}"));
+    }
+    Ok(message)
 }
 pub fn batch(
     store: &Store,
@@ -119,7 +133,7 @@ pub fn batch(
         sessions::no_links(&destination)?;
     }
     let mut j = Journal::new(&store.root, &format!("会话操作：{action}"))?;
-    report(&progress, "退出 Codex", "确保会话没有其他写入者", true);
+    report(&progress, "退出 Codex", "等待写入会话的程序退出", true);
     host.stop()?;
     runtime::stop_blocking(store)?;
     let scan = sessions::Scanner::default().scan_with_progress(&settings, ct, &progress)?;
@@ -129,7 +143,7 @@ pub fn batch(
         .into_iter()
         .filter(|s| ids.contains(&s.id))
         .collect();
-    ensure!(selected.len() == ids.len(), "选择中存在重复或已消失会话");
+    ensure!(selected.len() == ids.len(), "所选会话有重复或已不存在，请刷新后重试");
     sessions::stage_changes_with_progress(
         &mut j, &settings, &selected, action, value, ct, &progress,
     )?;
@@ -140,9 +154,9 @@ pub fn batch(
         .providers()?
         .into_iter()
         .find(|p| Some(&p.id) == settings.active_provider_id.as_ref());
-    if active.is_some_and(|p| p.runtime()) {
+    if active.as_ref().is_some_and(|p| p.runtime()) {
         runtime::ensure_started_blocking(store)?;
     }
-    let message = host.start()?;
+    let message = host.start(active.as_ref().is_some_and(Provider::native_fast_enabled))?;
     Ok(format!("已处理 {} 个会话。{message}", selected.len()))
 }

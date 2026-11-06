@@ -99,9 +99,9 @@ pub fn window_appearance(window: tauri::WebviewWindow, dark: bool, system: bool)
     let color = if mica {
         tauri::window::Color(0, 0, 0, 0)
     } else if dark {
-        tauri::window::Color(33, 30, 37, 255)
+        tauri::window::Color(29, 29, 29, 255)
     } else {
-        tauri::window::Color(243, 239, 244, 255)
+        tauri::window::Color(247, 247, 247, 255)
     };
     window
         .set_background_color(Some(color))
@@ -254,7 +254,7 @@ fn selected(
         .into_iter()
         .filter(|s| wanted.contains(&s.id))
         .collect();
-    ensure!(selected.len() == ids.len(), "会话已消失或选择重复，请刷新");
+    ensure!(selected.len() == ids.len(), "所选会话已不存在或有重复，请刷新后重试");
     Ok(selected)
 }
 #[tauri::command]
@@ -412,7 +412,7 @@ pub async fn restore_operation(
                 .all(|f| core::sessions::within(&f.path, &store.root).unwrap_or(false))
             {
                 core::journal::restore(&store.root, &id, &[store.root.clone()])?;
-                return Ok("本地数据已恢复。请重新启动 Easy Switch 以重新检查导入状态。".into());
+                return Ok("本地数据已恢复，请重启 Easy Switch 检查导入结果。".into());
             }
         }
         let settings = store.settings()?;
@@ -437,14 +437,14 @@ pub async fn restore_operation(
         core::journal::restore(&root, &id, &allowed)?;
         store.synchronize_active()?;
         let active = store.settings()?.active_provider_id;
-        if store
-            .providers()?
+        let providers = store.providers()?;
+        if providers
             .iter()
             .any(|p| Some(&p.id) == active.as_ref() && p.runtime())
         {
             core::runtime::ensure_started_blocking(&store)?;
         }
-        host.start()
+        host.start(providers.iter().any(|p| Some(&p.id) == active.as_ref() && p.native_fast_enabled()))
     })
     .await
     .map_err(|e| e.to_string())?

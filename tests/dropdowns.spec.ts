@@ -16,13 +16,14 @@ async function inspectPicker(page:Page,field:Locator,name:string,color:string){
  await expect(field).toBeFocused();
 }
 
-for(const [theme,color] of [['浅色','rgb(255, 252, 255)'],['深色','rgb(44, 39, 50)']])test(`all selection menus share their surface and fit the minimum window: ${theme}`,async({page})=>{
+for(const theme of ['浅色','深色'])test(`all selection menus share their surface and fit the minimum window: ${theme}`,async({page})=>{
  const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
  await page.setViewportSize({width:940,height:620});await page.goto('/');
  await page.getByRole('button',{name:'供应商',exact:true}).click();await expect(page.locator('.provider-card')).toHaveCount(4);await setTheme(page,theme);
  const card=page.locator('.provider-card').filter({has:page.getByRole('heading',{name:'Sub2API'})});
  await card.getByRole('button',{name:'编辑',exact:true}).click();
  const dialog=page.getByRole('dialog'),mode=dialog.getByLabel('认证模式');
+ const color=await dialog.evaluate(el=>getComputedStyle(el).backgroundColor);
  await inspectPicker(page,mode,theme+'-mode',color);await expect(dialog).toBeVisible();
  await inspectPicker(page,dialog.getByLabel('协议'),theme+'-protocol',color);
  await mode.selectOption('Aggregate');
@@ -31,7 +32,7 @@ for(const [theme,color] of [['浅色','rgb(255, 252, 255)'],['深色','rgb(44, 3
  const official=page.locator('.provider-card').filter({has:page.getByRole('heading',{name:'OpenAI 官方',exact:true})});
  await official.getByRole('button',{name:'编辑',exact:true}).click();await expect(dialog.getByLabel('认证模式')).toBeDisabled();await page.keyboard.press('Escape');
  await card.locator('summary').click();
- await expect(card.locator('.card-menu>div')).toHaveCSS('background-color',color);await expect(card.locator('.card-menu>div')).toHaveCSS('border-radius','14px');await card.locator('summary').click();
+ await expect(card.locator('.card-menu>div')).toHaveCSS('background-color',color);await expect(card.locator('.card-menu>div')).toHaveCSS('border-radius','12px');await card.locator('summary').click();
  await page.getByRole('button',{name:'会话',exact:true}).click();
  await inspectPicker(page,page.getByLabel('项目筛选'),theme+'-project',color);
  await inspectPicker(page,page.getByLabel('会话状态筛选'),theme+'-status',color);

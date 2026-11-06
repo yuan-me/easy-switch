@@ -1,4 +1,4 @@
-import {setTheme} from './helpers';
+import {setTheme,themeColor} from './helpers';
 import {test,expect,type Page} from '@playwright/test';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
@@ -63,7 +63,7 @@ test('new-model badge is a label and editing persists model choices',async({page
  await setTheme(page,'深色');
  await page.setViewportSize({width:940,height:620});
  await expect(page.locator('html')).toHaveAttribute('data-theme','dark');
- await expect(page.locator('.provider-card')).toHaveCSS('background-color','rgb(44, 39, 50)');
+ await expect(page.locator('.provider-card')).toHaveCSS('background-color',await themeColor(page));
  await page.screenshot({animations:'disabled',path:join(tmpdir(),'easy-switch-models-dark-min.png')});
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
  expect(errors).toEqual([]);
@@ -135,12 +135,12 @@ test('model search stays inline and nested scrollbars appear only during scrolli
 
 test('model dropdown matches other menus while allowing a custom model ID',async({page})=>{
  await desktop(page);await page.setViewportSize({width:940,height:620});
- for(const [theme,color] of [['浅色','rgb(255, 252, 255)'],['深色','rgb(44, 39, 50)']]){
+ for(const theme of ['浅色','深色']){
   await setTheme(page,theme);await page.getByRole('button',{name:'编辑',exact:true}).click();
   const dialog=page.getByRole('dialog'),models=dialog.getByLabel('选择默认模型');
   await expect(models.locator('selectedcontent')).toHaveCSS('display','none');
   await models.click();
-  expect(await models.evaluate(el=>getComputedStyle(el,'::picker(select)').backgroundColor)).toBe(color);
+  expect(await models.evaluate(el=>getComputedStyle(el,'::picker(select)').backgroundColor)).toBe(await themeColor(page));
   await page.screenshot({path:`artifacts/screenshots/dropdown-${theme}-models.png`});
   await page.keyboard.press('Escape');await expect(dialog).toBeVisible();
   await models.selectOption('excluded-model');await expect(dialog.getByLabel('默认模型',{exact:true})).toHaveValue('excluded-model');
@@ -244,7 +244,7 @@ test('editor is centered and grouped with two model columns at desktop and minim
   expect(Math.abs(protocol!.y-address!.y)).toBeLessThan(1);expect(address!.x).toBeGreaterThan(protocol!.x);
   expect(key!.y).toBeGreaterThan(address!.y);expect(key!.width).toBeGreaterThan(address!.width);
   await expect(dialog.getByPlaceholder('留空保留已有密钥')).toHaveCount(0);
-  const bounds=await dialog.boundingBox();expect(bounds!.width).toBeGreaterThan(850);
+  const bounds=await dialog.boundingBox();expect(bounds!.width).toBe(840);
   expect(Math.abs(bounds!.x-(width-bounds!.width)/2)).toBeLessThan(1);
   expect(Math.abs(bounds!.y-(height-bounds!.height)/2)).toBeLessThan(1);
   await page.screenshot({animations:'disabled',path:join(tmpdir(),`easy-switch-sections-${theme}.png`)});
@@ -263,13 +263,13 @@ test('editor is centered and grouped with two model columns at desktop and minim
 test('collapsed advanced fields reopen for validation and retain their values when saved',async({page})=>{
  await desktop(page);await page.getByRole('button',{name:'编辑',exact:true}).click();
  const dialog=page.getByRole('dialog'),advanced=dialog.locator('.provider-advanced');
- await advanced.locator('summary').click();await dialog.getByLabel('上下文窗口').fill('0');
- await advanced.locator('summary').click();await dialog.getByRole('button',{name:'保存配置'}).click();
+ await advanced.locator(':scope > summary').click();await dialog.getByLabel('上下文窗口').fill('0');
+ await advanced.locator(':scope > summary').click();await dialog.getByRole('button',{name:'保存配置'}).click();
  await expect(advanced).toHaveAttribute('open','');await expect(dialog.getByLabel('上下文窗口')).toBeFocused();
  expect(await page.evaluate(()=>(window as any).modelCalls.filter((c:any)=>c.command==='save_provider'))).toHaveLength(0);
  await dialog.getByLabel('上下文窗口').fill('64000');await dialog.getByLabel('自动压缩阈值').fill('8000');
  await dialog.getByLabel('自定义请求头（JSON，空值保留）').fill('{"X-Test":"retained"}');
- await dialog.getByLabel('Sub2API 图片工具兼容').uncheck();await advanced.locator('summary').click();
+ await dialog.getByLabel('兼容图片工具').uncheck();await advanced.locator(':scope > summary').click();
  await dialog.getByRole('button',{name:'保存配置'}).click();await expect(dialog).not.toBeVisible();
  const saved=await page.evaluate(()=>(window as any).modelCalls.find((c:any)=>c.command==='save_provider').args.provider);
  expect(saved).toMatchObject({contextWindow:64000,compactLimit:8000,headers:{'X-Test':'retained'},imageCompatibility:false});

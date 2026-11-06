@@ -41,6 +41,10 @@ pub fn header(path: &Path) -> Result<Header> {
     anyhow::bail!("缺少 session_meta")
 }
 pub fn lines(path: &Path) -> Result<impl Iterator<Item = std::io::Result<String>>> {
+    Ok(segment_readers(path)?.into_iter().flat_map(|r| r.lines()))
+}
+
+fn segment_readers(path: &Path) -> Result<Vec<BufReader<std::io::Take<File>>>> {
     let first = header(path)?;
     let mut paths = std::collections::HashMap::new();
     if first.base.is_some() {
@@ -98,11 +102,231 @@ pub fn lines(path: &Path) -> Result<impl Iterator<Item = std::io::Result<String>
         cap = h.base_offset.context("分页历史缺少字节偏移")?;
     }
     segments.reverse();
-    let readers = segments
+    segments
         .into_iter()
         .map(|(p, n)| Ok(BufReader::new(File::open(p)?.take(n))))
-        .collect::<Result<Vec<_>>>()?;
-    Ok(readers.into_iter().flat_map(|r| r.lines()))
+        .collect::<Result<Vec<_>>>()
+}
+
+fn validate_settings_snapshot(settings: &Value) -> Result<()> {
+    let nonempty = |v: &Value| v.as_str().is_some_and(|s| !s.is_empty());
+    ensure!(
+        settings.is_object()
+            && nonempty(&settings["model"])
+            && nonempty(&settings["model_provider_id"])
+            && settings["cwd"]
+                .as_str()
+                .is_some_and(|p| Path::new(p).is_absolute()),
+        "线程设置快照缺少模型、服务商或绝对工作目录"
+    );
+    let approval = &settings["approval_policy"];
+    let approval_valid = matches!(
+        approval.as_str(),
+        Some("untrusted" | "on-request" | "on-failure" | "never")
+    ) || approval.get("granular").is_some_and(|v| {
+        ["sandbox_approval", "rules", "mcp_elicitations"]
+            .iter()
+            .all(|k| v[*k].is_boolean())
+            && ["skill_approval", "request_permissions"]
+                .iter()
+                .all(|k| v.get(*k).is_none_or(Value::is_boolean))
+    });
+    ensure!(
+        approval_valid
+            && matches!(
+                settings["approvals_reviewer"].as_str(),
+                Some("user" | "auto_review" | "guardian_subagent")
+            ),
+        "线程设置快照缺少有效的审批配置"
+    );
+    let permissions = &settings["permission_profile"];
+    let entries_valid = |v: &Value| {
+        v.as_array().is_some_and(|items| {
+            items.iter().all(|item| {
+                matches!(
+                    item["access"].as_str(),
+                    Some("read" | "write" | "deny" | "none")
+                ) && match item["path"]["type"].as_str() {
+                    Some("path") => nonempty(&item["path"]["path"]),
+                    Some("glob_pattern") => nonempty(&item["path"]["pattern"]),
+                    Some("special") => nonempty(&item["path"]["value"]["kind"]),
+                    _ => false,
+                }
+            })
+        })
+    };
+    let network_valid = || {
+        matches!(
+            permissions["network"].as_str(),
+            Some("restricted" | "enabled")
+        )
+    };
+    let permissions_valid = match permissions["type"].as_str() {
+        Some("disabled") => true,
+        Some("external") => network_valid(),
+        Some("managed") => {
+            network_valid()
+                && match permissions["file_system"]["type"].as_str() {
+                    Some("unrestricted") => true,
+                    Some("restricted") => entries_valid(&permissions["file_system"]["entries"]),
+                    _ => false,
+                }
+        }
+        None => permissions.as_object().is_some_and(|p| {
+            p.keys()
+                .all(|k| matches!(k.as_str(), "network" | "file_system"))
+                && p.get("network").is_none_or(|v| {
+                    v.is_null()
+                        || (v.is_object()
+                            && v.get("enabled")
+                                .is_none_or(|v| v.is_null() || v.is_boolean()))
+                })
+                && p.get("file_system")
+                    .is_none_or(|v| v.is_null() || entries_valid(&v["entries"]))
+        }),
+        _ => false,
+    };
+    ensure!(
+        permissions_valid,
+        "线程设置快照缺少完整且受支持的权限配置，未生成新权限"
+    );
+    let collaboration = &settings["collaboration_mode"];
+    ensure!(
+        matches!(
+            collaboration["mode"].as_str(),
+            Some("default" | "plan" | "code" | "pair_programming" | "execute" | "custom")
+        ) && nonempty(&collaboration["settings"]["model"]),
+        "线程设置快照缺少完整的协作模式"
+    );
+    ensure!(
+        settings
+            .get("disabled_plugin_ids")
+            .is_none_or(|v| v.as_array().is_some_and(|v| v.iter().all(Value::is_string))),
+        "线程设置快照的插件列表无效"
+    );
+    Ok(())
+}
+
+/// Read bounded lines from the effective history, retaining only the latest owned snapshot.
+/// The event shape is pinned to Codex 0.164.0-alpha.11.1; permissions are copied, never invented.
+pub(crate) fn prepare_model_events(
+    items: &[sessions::Session],
+    provider: Option<&str>,
+    model: Option<&str>,
+    ct: &tokio_util::sync::CancellationToken,
+) -> Result<std::collections::HashMap<PathBuf, Vec<u8>>> {
+    let mut events = std::collections::HashMap::new();
+    for item in items {
+        let current = header(&item.path)?;
+        ensure!(current.id == item.id, "线程索引与会话身份不一致，未修改");
+        let readers = segment_readers(&item.path)?;
+        let current_segment = readers.len() - 1;
+        let mut latest = None;
+        let mut model_history = false;
+        let mut last_ordinal = None;
+        let mut current_metadata = None;
+        for (segment, mut reader) in readers.into_iter().enumerate() {
+            let mut line = vec![];
+            loop {
+                ensure!(!ct.is_cancelled(), "操作已取消");
+                line.clear();
+                let length = reader
+                    .by_ref()
+                    .take(32 * 1024 * 1024 + 1)
+                    .read_until(b'\n', &mut line)?;
+                if length == 0 {
+                    break;
+                }
+                ensure!(length <= 32 * 1024 * 1024, "单条会话事件超过 32 MiB");
+                let text = std::str::from_utf8(&line)?
+                    .trim_start_matches('\u{feff}')
+                    .trim();
+                if text.is_empty() {
+                    continue;
+                }
+                let row: Value = serde_json::from_str(text)?;
+                if segment == current_segment {
+                    last_ordinal = row["ordinal"].as_u64();
+                    if current_metadata.is_none() && row["type"] == "session_meta" {
+                        current_metadata = Some(row.clone());
+                    }
+                }
+                if row["type"] == "turn_context" && !row["payload"]["model"].is_null() {
+                    model_history = true;
+                }
+                if row["type"] == "event_msg" && row["payload"]["type"] == "thread_settings_applied"
+                {
+                    model_history = true;
+                    if row["payload"]["thread_id"].as_str() == Some(item.id.as_str()) {
+                        latest = Some(row);
+                    }
+                }
+            }
+        }
+        if !model_history {
+            continue;
+        }
+        let model = model
+            .filter(|m| !m.trim().is_empty())
+            .context("旧聊天存在模型历史，请明确指定目标模型后再切换")?;
+        let mut event =
+            latest.context("旧聊天缺少归属于当前线程的完整设置快照，无法安全切换模型")?;
+        validate_settings_snapshot(&event["payload"]["thread_settings"])?;
+        if current.paginated {
+            let last = last_ordinal.context("分页历史最后一条事件缺少 ordinal，未追加设置事件")?;
+            if let Some(prefix) = current_metadata
+                .as_ref()
+                .and_then(|m| m["payload"]["subagent_history_start_ordinal"].as_u64())
+                .and_then(|n| n.checked_sub(1))
+            {
+                ensure!(
+                    last >= prefix,
+                    "分页子线程继承前缀未完整保存，未追加设置事件"
+                );
+            }
+            event["ordinal"] = last
+                .checked_add(1)
+                .context("分页历史 ordinal 已溢出")?
+                .into();
+        } else {
+            event
+                .as_object_mut()
+                .context("线程设置事件结构无效")?
+                .remove("ordinal");
+        }
+        if let Some(provider) = provider {
+            event["timestamp"] = chrono::Utc::now()
+                .to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
+                .into();
+            let snapshot = &mut event["payload"]["thread_settings"];
+            snapshot["model"] = model.into();
+            snapshot["model_provider_id"] = provider.into();
+            snapshot["collaboration_mode"]["settings"]["model"] = model.into();
+            let mut bytes = serde_json::to_vec(&event)?;
+            bytes.push(b'\n');
+            ensure!(
+                events.insert(path_key(&item.path)?, bytes).is_none(),
+                "当前会话路径重复"
+            );
+        }
+    }
+    Ok(events)
+}
+
+pub(crate) fn append_projection_event(path: &Path, event: &[u8]) -> Result<()> {
+    use std::io::{Seek, SeekFrom, Write};
+    let mut file = File::options().read(true).append(true).open(path)?;
+    if file.metadata()?.len() > 0 {
+        file.seek(SeekFrom::End(-1))?;
+        let mut last = [0];
+        file.read_exact(&mut last)?;
+        if last[0] != b'\n' {
+            file.write_all(b"\n")?;
+        }
+    }
+    file.write_all(event)?;
+    file.sync_all()?;
+    Ok(())
 }
 pub fn rollout_id(path: &Path) -> Option<String> {
     let stem = path.file_stem()?.to_str()?;
@@ -159,10 +383,10 @@ pub fn ensure_unreferenced(settings: &Settings, deleting: &[PathBuf]) -> Result<
                 continue;
             }
             let path = sessions::owned(e.path(), settings)?;
-            if deleting.iter().any(|p| {
-                p.to_string_lossy()
-                    .eq_ignore_ascii_case(&path.to_string_lossy())
-            }) {
+            if deleting
+                .iter()
+                .any(|p| sessions::same_path(p, &path).unwrap_or(false))
+            {
                 continue;
             }
             if let Some(base) = header(&path)?.base {
@@ -244,7 +468,10 @@ impl OffsetShift {
         use std::io::{Seek, SeekFrom};
         if let Some((len, boundaries)) = &self.source_boundaries {
             ensure!(offset <= *len, "分页历史偏移超出文件末尾");
-            ensure!(boundaries.binary_search(&offset).is_ok(), "分页历史偏移未对齐事件边界");
+            ensure!(
+                boundaries.binary_search(&offset).is_ok(),
+                "分页历史偏移未对齐事件边界"
+            );
         } else {
             let mut file = File::open(&self.path)?;
             ensure!(offset <= file.metadata()?.len(), "分页历史偏移超出文件末尾");
@@ -266,8 +493,8 @@ impl OffsetShift {
         }
     }
 }
-fn path_key(path: &Path) -> Result<String> {
-    Ok(sessions::normalize(path)?.to_string_lossy().to_lowercase())
+fn path_key(path: &Path) -> Result<PathBuf> {
+    sessions::path_key(path)
 }
 
 // Acyclic history_base references are resolved parent first. Padding is retained when
@@ -276,7 +503,7 @@ fn resolve_metadata(
     index: usize,
     nodes: &[MetadataLine],
     by_rollout: &std::collections::HashMap<String, usize>,
-    selected: &HashSet<String>,
+    selected: &HashSet<PathBuf>,
     key: &str,
     value: &str,
     resolved: &mut std::collections::HashMap<usize, (Vec<u8>, OffsetShift)>,
@@ -349,6 +576,28 @@ pub fn stage_metadata(
     items: &[sessions::Session],
     key: &str,
     value: &str,
+    ct: &tokio_util::sync::CancellationToken,
+    progress: &impl Fn(crate::Progress),
+) -> Result<std::collections::HashMap<String, OffsetShift>> {
+    stage_metadata_with_events(
+        journal,
+        settings,
+        items,
+        key,
+        value,
+        &std::collections::HashMap::new(),
+        ct,
+        progress,
+    )
+}
+
+pub(crate) fn stage_metadata_with_events(
+    journal: &mut crate::journal::Journal,
+    settings: &Settings,
+    items: &[sessions::Session],
+    key: &str,
+    value: &str,
+    events: &std::collections::HashMap<PathBuf, Vec<u8>>,
     ct: &tokio_util::sync::CancellationToken,
     progress: &impl Fn(crate::Progress),
 ) -> Result<std::collections::HashMap<String, OffsetShift>> {
@@ -430,14 +679,16 @@ pub fn stage_metadata(
             Some(nodes.len()),
         ));
         let (bytes, mut shift) = resolved.remove(&i).unwrap();
-        if bytes == m.raw {
+        let event = events.get(&path_key(&m.path)?);
+        if bytes == m.raw && event.is_none() {
             continue;
         }
         let temp = journal.dir.join(format!("{}.jsonl", uuid::Uuid::new_v4()));
         let result = (|| -> Result<()> {
             let before = crate::journal::hash(&m.path)?;
             let mut input = BufReader::new(File::open(&m.path)?);
-            let mut output = BufWriter::with_capacity(64 * 1024, File::create(&temp)?);
+            let mut output =
+                BufWriter::with_capacity(64 * 1024, crate::store::private_file(&temp, true)?);
             let mut offset = 0;
             let mut ordinal = 0;
             let mut found = false;
@@ -489,6 +740,9 @@ pub fn stage_metadata(
             output.flush()?;
             output.get_ref().sync_all()?;
             drop(output);
+            if let Some(event) = event {
+                append_projection_event(&temp, event)?;
+            }
             ensure!(
                 crate::journal::hash(&m.path)? == before,
                 "会话文件出现并发修改"
@@ -587,14 +841,21 @@ mod tests {
         let bytes = b"prefix\nmeta\none\nlast";
         std::fs::write(&path, bytes).unwrap();
         let mut shift = OffsetShift {
-            path, start: 7, end: 12, delta: 9, source_boundaries: None,
+            path,
+            start: 7,
+            end: 12,
+            delta: 9,
+            source_boundaries: None,
         };
         let expected: Vec<_> = (0..=bytes.len() as u64 + 1)
             .map(|offset| shift.translate(offset).map_err(|e| e.to_string()))
             .collect();
         shift.source_boundaries = Some((bytes.len() as u64, vec![0, 7, 12, 16]));
         for (offset, expected) in expected.into_iter().enumerate() {
-            assert_eq!(shift.translate(offset as u64).map_err(|e| e.to_string()), expected);
+            assert_eq!(
+                shift.translate(offset as u64).map_err(|e| e.to_string()),
+                expected
+            );
         }
     }
 }

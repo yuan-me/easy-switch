@@ -35,12 +35,12 @@ test('usage periods, model filtering, session navigation and timed notifications
  await expect(page.locator('.detail-footer')).toBeInViewport();
  await page.screenshot({animations:'disabled',path:'artifacts/screenshots/islands-session-min.png'});
  await expect(page.locator('.message pre').first()).toHaveCSS('user-select','none');
- await page.getByRole('button',{name:'复制线程 ID',exact:true}).click();await expect(page.getByRole('status')).toContainText('线程 ID 已复制');
+ await page.getByRole('button',{name:'复制会话 ID',exact:true}).click();await expect(page.getByRole('status')).toContainText('会话 ID 已复制');
  await page.clock.fastForward(9000);await expect(page.getByRole('status')).toBeVisible();
- await page.getByRole('button',{name:'复制线程 ID',exact:true}).click();
+ await page.getByRole('button',{name:'复制会话 ID',exact:true}).click();
  await page.clock.fastForward(2000);await expect(page.getByRole('status')).toBeVisible();
  await page.clock.fastForward(8000);await expect(page.locator('.notice')).toHaveCount(0);
- await page.getByRole('button',{name:'复制线程 ID',exact:true}).click();await page.getByRole('button',{name:'关闭提示',exact:true}).click();await expect(page.locator('.notice')).toHaveCount(0);
+ await page.getByRole('button',{name:'复制会话 ID',exact:true}).click();await page.getByRole('button',{name:'关闭提示',exact:true}).click();await expect(page.locator('.notice')).toHaveCount(0);
  await page.evaluate(()=>{
   const original=Date.prototype.toLocaleTimeString;(window as any).messageFormats=0;
   Date.prototype.toLocaleTimeString=function(...args){(window as any).messageFormats++;return original.apply(this,args)};

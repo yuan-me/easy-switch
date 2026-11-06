@@ -1,0 +1,61 @@
+{
+  "date": "2026-10-30",
+  "environment": "Offline QEMU Linux; synthetic chats only",
+  "realRemoteSshChatTested": false,
+  "results": [
+    {
+      "extensionVersion": "26.1002.51308",
+      "arch": "x64",
+      "cliVersion": "codex-cli 0.162.0-alpha.2",
+      "passed": true,
+      "codexSha256": "3b1015a94344ae22f8556b22ab86f22a2d66a436a36f493a1583088e0831efe1",
+      "log": "compat-x64-26.1002.51308.txt",
+      "report": "compat-x64-26.1002.51308.json"
+    },
+    {
+      "extensionVersion": "26.1007.21434",
+      "arch": "x64",
+      "cliVersion": "codex-cli 0.162.0-alpha.17.2",
+      "passed": true,
+      "codexSha256": "73b73b048546993298234a295de01ef2424e7a8b29def9d0ecb1ca7cb77500d4",
+      "log": "compat-x64-26.1007.21434.txt",
+      "report": "compat-x64-26.1007.21434.json"
+    },
+    {
+      "extensionVersion": "26.51021.22027",
+      "arch": "x64",
+      "cliVersion": "codex-cli 0.164.0-alpha.11.1",
+      "passed": true,
+      "codexSha256": "e6d386e8822288f6d5f327e966a5a5e1de928de8795bb6149716005a410f38f2",
+      "log": "compat-x64-26.51021.22027.txt",
+      "report": "compat-x64-26.51021.22027.json"
+    },
+    {
+      "extensionVersion": "26.1002.51308",
+      "arch": "arm64",
+      "cliVersion": "codex-cli 0.162.0-alpha.2",
+      "passed": true,
+      "codexSha256": "74222c5da1897c2ddf355575f2d60bb132bca331c3560411585b96c46646b5dc",
+      "log": "compat-arm64-26.1002.51308.txt",
+      "report": "compat-arm64-26.1002.51308.json"
+    },
+    {
+      "extensionVersion": "26.1007.21434",
+      "arch": "arm64",
+      "cliVersion": "codex-cli 0.162.0-alpha.17.2",
+      "passed": true,
+      "codexSha256": "fc01c470d900af0dc1cdcba7b8074bfe1c3a04ec53fbdf403704c94b94d59267",
+      "log": "compat-arm64-26.1007.21434.txt",
+      "report": "compat-arm64-26.1007.21434.json"
+    },
+    {
+      "extensionVersion": "26.51021.22027",
+      "arch": "arm64",
+      "cliVersion": "codex-cli 0.164.0-alpha.11.1",
+      "passed": true,
+      "codexSha256": "49c0be77a6ea76964f63f8224402dd4bbf6e9041083bc83bfc53d60f4b555577",
+      "log": "compat-arm64-26.51021.22027.txt",
+      "report": "compat-arm64-26.51021.22027.json"
+    }
+  ]
+}

@@ -58,14 +58,14 @@ pub async fn doctor(
 ) -> Result<Vec<Diagnostic>> {
     let mut rows = vec![];
     match p.validate(all) {
-        Ok(()) => rows.push(row("本地配置", "passed", "必填字段、地址和上下文设置有效")),
+        Ok(()) => rows.push(row("本地配置", "passed", "必填信息、地址和上下文设置检查通过")),
         Err(e) => {
             rows.push(row("本地配置", "failed", e.to_string()));
             return Ok(rows);
         }
     }
     if p.mode == AuthMode::Official {
-        rows.push(row("官方身份", "untested", "由 Codex 官方登录流程确认"));
+        rows.push(row("官方身份", "untested", "请在 Codex 中确认登录状态"));
         return Ok(rows);
     }
     rows.push(row(
@@ -76,20 +76,20 @@ pub async fn doctor(
             "untested"
         },
         if p.image_compatibility {
-            "已选择 Sub2API 客户端执行器兼容；切换后需完整重启并新建会话"
+            "已开启 Sub2API 图片工具兼容。切换后请完全重启 Codex，再新建会话"
         } else {
-            "未开启；仅有上游作图权限不代表客户端工具已注册"
+            "未开启。即使供应商支持绘图，也要检查 Codex 中是否有可用的图片工具"
         },
     ));
     rows.push(row(
         "客户端图片工具注册",
         "untested",
-        "需在目标 Codex 的新会话确认 image_gen 工具可用",
+        "请在 Codex 的新会话中检查 image_gen 工具是否可用",
     ));
     rows.push(row(
         "实际图片返回",
         "untested",
-        "需由 Codex 实际调用并显示图片，配置检查不能代替此项",
+        "请在 Codex 中实际生成并查看图片，这项需要单独验证",
     ));
     if p.protocol == Protocol::ChatCompletions {
         rows.push(row(
@@ -102,7 +102,7 @@ pub async fn doctor(
         return Ok(rows);
     }
     if p.mode == AuthMode::Aggregate {
-        rows.push(row("聚合成员", "untested", "请对各成员分别执行联网诊断"));
+        rows.push(row("聚合成员", "untested", "请分别对每个成员运行联网诊断"));
         return Ok(rows);
     }
     match models(p, ct).await {
@@ -161,7 +161,7 @@ pub async fn doctor(
             Ok(()) => rows.push(row(
                 name,
                 "passed",
-                format!("{} ms；仅使用合成测试内容", start.elapsed().as_millis()),
+                format!("{} ms；使用测试内容", start.elapsed().as_millis()),
             )),
             Err(e) => rows.push(row(name, "failed", runtime::safe_error(&e))),
         }

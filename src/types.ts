@@ -1,6 +1,6 @@
 export type Mode='Official'|'Mixed'|'Api'|'Aggregate';
 export type Progress={stage:string;detail:string;completed:number;total:number|null;cancellable:boolean};
-export type Provider={id:string;name:string;mode:Mode;protocol:'Responses'|'ChatCompletions';baseUrl:string;model:string;contextWindow:number|null;compactLimit:number|null;strategy:'Failover'|'Session'|'RoundRobin'|'Weighted';members:{providerId:string;weight:number;enabled:boolean}[];imageCompatibility:boolean;headers:Record<string,string>;hasKey?:boolean};
+export type Provider={id:string;name:string;mode:Mode;protocol:'Responses'|'ChatCompletions';baseUrl:string;model:string;contextWindow:number|null;compactLimit:number|null;strategy:'Failover'|'Session'|'RoundRobin'|'Weighted';members:{providerId:string;weight:number;enabled:boolean}[];imageCompatibility:boolean;nativeFastUnlock?:boolean;fastModels?:string[];headers:Record<string,string>;hasKey?:boolean};
 export type Settings={codexHome:string;sqliteHome:string|null;desktopExecutable:string;desktopAppId:string|null;activeProviderId:string|null;runtimePort:number;scrollPositions:Record<string,number>;enablePageRecovery:boolean;theme:'system'|'light'|'dark';accentColor?:string;colorStyle?:'vivid'|'soft';automaticUpdates:boolean;automaticDownload:boolean};
 export type ModelList={available:string[];excluded:string[];added:string[];removed:string[];checkedAt:number|null;error:string|null};
 export type ModelSelection={available:string[];excluded:string[]};
@@ -13,7 +13,7 @@ export type Operation={id:string;description:string;state:string;fileCount:numbe
 export type UpdateStatus={state:'idle'|'checking'|'current'|'available'|'downloading'|'ready'|'error';version?:string;notes?:string;downloaded?:number;total?:number;message?:string};
 export const modes:Record<Mode,string>={Official:'官方登录',Mixed:'混入 API',Api:'纯 API',Aggregate:'聚合路由'};
 export const strategies={Failover:'故障转移',Session:'按会话分配',RoundRobin:'按请求轮转',Weighted:'按权重分配'};
-export const blankProvider=():Provider=>({id:'p_'+crypto.randomUUID().replaceAll('-','').slice(0,12),name:'',mode:'Api',protocol:'Responses',baseUrl:'',model:'',contextWindow:null,compactLimit:null,strategy:'Failover',members:[],imageCompatibility:false,headers:{}});
+export const blankProvider=():Provider=>({id:'p_'+crypto.randomUUID().replaceAll('-','').slice(0,12),name:'',mode:'Api',protocol:'Responses',baseUrl:'',model:'',contextWindow:null,compactLimit:null,strategy:'Failover',members:[],imageCompatibility:false,nativeFastUnlock:false,headers:{}});
 
 export type UsageCounts={input:number;output:number;cached:number|null};
 export type UsageShare=UsageCounts&{id:string;name:string};

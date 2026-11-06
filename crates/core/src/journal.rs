@@ -57,12 +57,14 @@ fn lock(root: &Path) -> Result<File> {
     crate::sessions::no_links(root)?;
     let path = root.join("operation.lock");
     crate::sessions::no_links(&path)?;
-    let lock = File::options()
-        .create(true)
-        .read(true)
-        .write(true)
-        .truncate(false)
-        .open(path)?;
+    let mut options = File::options();
+    options.create(true).read(true).write(true).truncate(false);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let lock = options.open(path)?;
     lock.try_lock_exclusive()
         .context("另一个写入操作正在进行")?;
     Ok(lock)
@@ -274,21 +276,29 @@ pub struct Journal {
 }
 impl Journal {
     pub fn new(root: &Path, description: &str) -> Result<Self> {
-        fs::create_dir_all(root)?;
+        Self::new_with_setup(root, description, &|| Ok(()))
+    }
+    pub fn new_with_setup(
+        root: &Path,
+        description: &str,
+        setup: &impl Fn() -> Result<()>,
+    ) -> Result<Self> {
+        crate::store::private_dir(root)?;
         let lock = lock(root)?;
         cleanup_locked(root, &[])?;
         let ops = root.join("operations");
-        fs::create_dir_all(&ops)?;
+        crate::store::private_dir(&ops)?;
         ensure!(
             list(&ops, false)?.iter().all(|m| finished(&m.state)),
             "存在未完成操作，请先使用首页的中断恢复提示处理"
         );
+        setup()?;
         let dir = ops.join(format!(
             "{}-{}",
             chrono::Utc::now().format("%Y%m%d-%H%M%S"),
             uuid::Uuid::new_v4()
         ));
-        fs::create_dir(&dir)?;
+        crate::store::private_dir(&dir)?;
         let j = Self {
             dir,
             manifest: Manifest {
@@ -357,16 +367,13 @@ impl Journal {
         expected_before: Option<&Option<String>>,
     ) -> Result<()> {
         crate::sessions::no_links(path)?;
-        let normalized = crate::sessions::normalize(path)?
-            .to_string_lossy()
-            .to_lowercase();
+        let normalized = crate::sessions::path_key(path)?;
         ensure!(
             !self
                 .manifest
                 .files
                 .iter()
-                .any(|c| crate::sessions::normalize(&c.path)
-                    .is_ok_and(|p| p.to_string_lossy().to_lowercase() == normalized)),
+                .any(|c| crate::sessions::path_key(&c.path).is_ok_and(|p| p == normalized)),
             "重复写入同一个文件"
         );
         let before = hash(path)?;
@@ -408,16 +415,34 @@ impl Journal {
         self.commit_with_fault(None)
     }
     pub fn commit_with_fault(&mut self, fail_after: Option<usize>) -> Result<()> {
-        self.commit_observed(fail_after, &|_| {})
+        self.commit_observed(fail_after, &|_| {}, &|| Ok(()), &|| Ok(()))
     }
     pub fn commit_with_progress(&mut self, progress: &impl Fn(crate::Progress)) -> Result<()> {
-        self.commit_observed(None, progress)
+        self.commit_observed(None, progress, &|| Ok(()), &|| Ok(()))
+    }
+    pub fn commit_with_guard(
+        &mut self,
+        progress: &impl Fn(crate::Progress),
+        guard: &impl Fn() -> Result<()>,
+    ) -> Result<()> {
+        self.commit_observed(None, progress, guard, &|| Ok(()))
+    }
+    pub fn commit_verified(
+        &mut self,
+        progress: &impl Fn(crate::Progress),
+        guard: &impl Fn() -> Result<()>,
+        verify: &impl Fn() -> Result<()>,
+    ) -> Result<()> {
+        self.commit_observed(None, progress, guard, verify)
     }
     fn commit_observed(
         &mut self,
         fail_after: Option<usize>,
         progress: &impl Fn(crate::Progress),
+        guard: &impl Fn() -> Result<()>,
+        verify: &impl Fn() -> Result<()>,
     ) -> Result<()> {
+        guard()?;
         let total = self.manifest.files.len() * 2;
         let report = |detail: &str, completed, total| {
             progress(crate::Progress {
@@ -442,6 +467,7 @@ impl Journal {
                 verify_payload(c.stage.as_deref(), &c.after_hash, &self.dir)?;
             }
         }
+        guard()?;
         self.manifest.state = "Applying".into();
         self.save()?;
         let result = (|| {
@@ -451,6 +477,7 @@ impl Journal {
                     self.manifest.files.len() + i,
                     Some(total),
                 );
+                guard()?;
                 ensure!(hash(&c.path)? == c.before_hash, "提交期间发现并发修改");
                 check_wal(&c.path)?;
                 replace(c.stage.as_deref(), &c.path, c.patch.as_ref(), &c.after_hash)?;
@@ -459,11 +486,12 @@ impl Journal {
                     anyhow::bail!("模拟提交失败");
                 }
             }
-            Ok(())
+            guard()?;
+            verify()
         })();
         if let Err(e) = result {
             report("提交失败，正在自动回滚，请勿关闭程序", 0, None);
-            match self.rollback() {
+            match self.rollback_with_guard(guard) {
                 Ok(()) => return Err(e),
                 Err(r) => return Err(anyhow::anyhow!("操作失败；回滚尚未完成：{r}")),
             }
@@ -474,7 +502,10 @@ impl Journal {
         Ok(())
     }
     pub fn rollback(&mut self) -> Result<()> {
-        rollback_manifest(&self.dir, &mut self.manifest)?;
+        self.rollback_with_guard(&|| Ok(()))
+    }
+    fn rollback_with_guard(&mut self, guard: &impl Fn() -> Result<()>) -> Result<()> {
+        rollback_manifest(&self.dir, &mut self.manifest, guard)?;
         self.save()
     }
 }
@@ -494,6 +525,8 @@ impl Drop for Journal {
     }
 }
 fn safe_payload(path: &Path, dir: &Path) -> Result<()> {
+    crate::sessions::no_links(path)?;
+    crate::sessions::no_links(dir)?;
     let full = path.canonicalize()?;
     ensure!(full.starts_with(dir.canonicalize()?), "备份文件越界");
     Ok(())
@@ -571,10 +604,10 @@ fn replace(
 ) -> Result<()> {
     if let Some(p) = payload {
         let parent = dest.parent().context("目标路径没有父目录")?;
-        fs::create_dir_all(parent)?;
+        crate::store::private_dir(parent)?;
         let temp = parent.join(format!(".easy-switch-{}.restore", uuid::Uuid::new_v4()));
         let result = (|| {
-            let mut out = File::options().create_new(true).write(true).open(&temp)?;
+            let mut out = crate::store::private_file(&temp, true)?;
             write_payload(p, dest, patch, &mut out)?;
             out.sync_all()?;
             drop(out);
@@ -586,6 +619,7 @@ fn replace(
     } else {
         if dest.exists() {
             fs::remove_file(dest)?;
+            crate::store::sync_parent(dest)?;
         }
         Ok(())
     }
@@ -608,6 +642,7 @@ pub fn replace_file(source: &Path, dest: &Path) -> Result<()> {
     }
     #[cfg(not(windows))]
     fs::rename(source, dest)?;
+    crate::store::sync_parent(dest)?;
     Ok(())
 }
 fn verify_restore(dir: &Path, m: &Manifest) -> Result<()> {
@@ -623,10 +658,18 @@ fn verify_restore(dir: &Path, m: &Manifest) -> Result<()> {
     }
     Ok(())
 }
-fn rollback_manifest(dir: &Path, m: &mut Manifest) -> Result<()> {
+fn rollback_manifest(dir: &Path, m: &mut Manifest, guard: &impl Fn() -> Result<()>) -> Result<()> {
+    guard()?;
     verify_restore(dir, m)?;
     for c in m.files.iter().rev() {
-        if hash(&c.path)? != c.before_hash {
+        guard()?;
+        let current = hash(&c.path)?;
+        ensure!(
+            current == c.before_hash || current == c.after_hash,
+            "恢复期间发现外部改动，拒绝覆盖"
+        );
+        check_wal(&c.path)?;
+        if current != c.before_hash {
             replace(c.backup.as_deref(), &c.path, None, &c.before_hash)?;
             ensure!(hash(&c.path)? == c.before_hash, "恢复校验失败");
         }
@@ -635,6 +678,15 @@ fn rollback_manifest(dir: &Path, m: &mut Manifest) -> Result<()> {
     Ok(())
 }
 pub fn restore(root: &Path, id: &str, allowed: &[PathBuf]) -> Result<()> {
+    restore_with_guard(root, id, allowed, &|| Ok(()))
+}
+pub fn restore_with_guard(
+    root: &Path,
+    id: &str,
+    allowed: &[PathBuf],
+    guard: &impl Fn() -> Result<()>,
+) -> Result<()> {
+    guard()?;
     ensure!(
         !id.is_empty() && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-'),
         "备份 ID 无效"
@@ -657,7 +709,7 @@ pub fn restore(root: &Path, id: &str, allowed: &[PathBuf]) -> Result<()> {
     verify_restore(&dir, &m)?;
     m.state = "Restoring".into();
     atomic_write(&path, &serde_json::to_vec_pretty(&m)?)?;
-    rollback_manifest(&dir, &mut m)?;
+    rollback_manifest(&dir, &mut m, guard)?;
     atomic_write(&path, &serde_json::to_vec_pretty(&m)?)?;
     cleanup_temps(&m, allowed)?;
     remove_operation(&dir)

@@ -1,0 +1,18 @@
+{
+  "environment": "QEMU arm64 Linux RAM-only; no NIC, disk or host share",
+  "tests": {
+    "helper": 0
+  },
+  "qemuExitCode": 0,
+  "timedOut": false,
+  "passed": true,
+  "testSha256": {
+    "helper": "eb13391b99072879506bb30d72cf16f0eb079e529c61f40a202465507a8a6f08"
+  },
+  "kernelSha256": "849394914e6a93cc9bb17e901f445ce21fcd7e4528541d9496a74d6a6ccee319",
+  "remoteSshTested": false,
+  "realAccountsUsed": false,
+  "codexSha256": "49c0be77a6ea76964f63f8224402dd4bbf6e9041083bc83bfc53d60f4b555577",
+  "bundledBwrapSha256": "0d784834f1674ff02aee25b42f2cbcfd27c5305863806cd6475d0eac8e33c378",
+  "expectedCodexVersion": "codex-cli 0.164.0-alpha.11.1"
+}

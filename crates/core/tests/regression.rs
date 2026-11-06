@@ -1364,11 +1364,88 @@ impl DesktopHost for FakeHost {
         anyhow::ensure!(!self.fail, "shutdown failed");
         Ok(())
     }
-    fn start(&self) -> Result<String> {
+    fn start(&self, _native_fast: bool) -> Result<String> {
         self.starts.fetch_add(1, Ordering::SeqCst);
         Ok("ready".into())
     }
 }
+#[test]
+fn fast_switch_uses_displayed_default_without_separate_model_selection() {
+    for (enabled, supported, expected) in [
+        (true, false, "ready"),
+        (true, true, "ready"),
+        (false, false, "ready"),
+    ] {
+        let mut f = fixture();
+        f.settings.native_fast_unlock = !enabled;
+        f.store.save("settings.json", &f.settings).unwrap();
+        let mut p = api("a");
+        p.native_fast_unlock = Some(enabled);
+        if supported { p.fast_models.push(p.model.clone()); }
+        f.store.save("providers.json", &vec![p.clone()]).unwrap();
+        let host = FakeHost { stops: AtomicUsize::new(0), starts: AtomicUsize::new(0), fail: false };
+        let message = service::switch(&f.store, &p, &host, &CancellationToken::new(), |_| {}).unwrap();
+        assert!(message.contains(expected), "{message}");
+        assert!(!message.contains("已解锁"));
+        assert_eq!(host.starts.load(Ordering::SeqCst), 1);
+    }
+}
+
+#[test]
+fn provider_fast_migrates_legacy_choices_and_defaults_new_providers_off() {
+    let mut f = fixture();
+    f.settings.native_fast_unlock = true;
+    f.store.save("settings.json", &f.settings).unwrap();
+    let mut legacy = serde_json::to_value(api("legacy")).unwrap();
+    legacy.as_object_mut().unwrap().remove("nativeFastUnlock");
+    let explicit_off = api("off");
+    f.store.save("providers.json", &json!([legacy, explicit_off, Provider::official()])).unwrap();
+    let all = f.store.providers().unwrap();
+    assert!(all[0].native_fast_enabled());
+    assert!(!all[1].native_fast_enabled());
+    assert!(!all[2].native_fast_enabled());
+    let new = api("new");
+    f.store.save_provider(new, Some("synthetic-key".into())).unwrap();
+    f.settings.native_fast_unlock = false;
+    f.store.save("settings.json", &f.settings).unwrap();
+    let all = f.store.providers().unwrap();
+    assert!(all[0].native_fast_enabled(), "persisted legacy choice must survive global changes");
+    assert!(!all[3].native_fast_enabled(), "new providers must start off");
+    let mut disabled = all[0].clone();
+    disabled.native_fast_unlock = Some(false);
+    f.store.save_provider(disabled, None).unwrap();
+    assert!(!f.store.providers().unwrap()[0].native_fast_enabled());
+    let mut p = api("protocol");
+    p.native_fast_unlock = Some(true);
+    p.protocol = Protocol::ChatCompletions;
+    assert!(!p.native_fast_enabled());
+    p.protocol = Protocol::Responses;
+    p.mode = AuthMode::Mixed;
+    assert!(!p.native_fast_enabled());
+}
+
+#[test]
+fn provider_fast_is_passed_to_each_desktop_restart() {
+    struct Host(std::sync::Mutex<Vec<bool>>);
+    impl DesktopHost for Host {
+        fn stop(&self) -> Result<()> { Ok(()) }
+        fn start(&self, enabled: bool) -> Result<String> {
+            self.0.lock().unwrap().push(enabled);
+            Ok("ready".into())
+        }
+    }
+    let f = fixture();
+    let mut a = api("a");
+    a.native_fast_unlock = Some(true);
+    a.fast_models.push(a.model.clone());
+    let b = api("b");
+    f.store.save("providers.json", &vec![a.clone(), b.clone()]).unwrap();
+    let host = Host(Default::default());
+    service::switch(&f.store, &a, &host, &CancellationToken::new(), |_| {}).unwrap();
+    service::switch(&f.store, &b, &host, &CancellationToken::new(), |_| {}).unwrap();
+    assert_eq!(*host.0.lock().unwrap(), vec![true, false]);
+}
+
 #[test]
 fn switch_a_b_a_preserves_body_and_restarts() {
     let f = fixture();
@@ -1422,6 +1499,27 @@ fn switch_a_b_a_preserves_body_and_restarts() {
             .contains("old model_provider=a")
     );
 }
+#[test]
+fn failed_restart_keeps_committed_provider() {
+    struct FailedStart(&'static str);
+    impl DesktopHost for FailedStart {
+        fn stop(&self) -> Result<()> { Ok(()) }
+        fn start(&self, _: bool) -> Result<String> { anyhow::bail!(self.0) }
+    }
+    for message in ["未能启动 Codex，请手动启动", "Codex 已启动，但 Fast 解锁未成功：Fast 模块未确认生效"] {
+    let f = fixture();
+    let p = api("b");
+    f.store.save("providers.json", &vec![p.clone()]).unwrap();
+    f.store.save("active-provider.json", &"official").unwrap();
+    let error = service::switch(&f.store, &p, &FailedStart(message), &CancellationToken::new(), |_| {}).unwrap_err();
+    assert_eq!(easy_switch_core::runtime::safe_error(&error), format!("配置已保存。{message}"));
+    assert_eq!(f.store.settings().unwrap().active_provider_id.as_deref(), Some("b"));
+    let config = fs::read_to_string(f.settings.codex_home.join("config.toml")).unwrap().parse::<toml_edit::DocumentMut>().unwrap();
+    assert_eq!(config["model_provider"].as_str(), Some(p.provider_id()));
+    assert_eq!(scan(&f)[0].provider, p.provider_id());
+    }
+}
+
 #[test]
 fn failed_shutdown_never_writes() {
     let f = fixture();

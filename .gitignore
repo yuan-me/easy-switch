@@ -21,3 +21,6 @@ test-version.json
 docs/HANDOFF*.md
 .claude/handoffs/
 design-qa.md
+
+# Personal infrastructure records stay local.
+extensions/vscode/PROXY_VALIDATION.md

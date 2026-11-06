@@ -1,0 +1,7 @@
+{
+  "crates/vscode-helper/src/guard.rs": "1e9e9333d4ddc5eef8e7d401681bd56e8cf3512a84bea266a1c3ecec22aad764",
+  "extensions/vscode/src/backend.ts": "ebda5a3b15754b48419a690aa2707a3c5520ae38dca3651be05ece762bf2fec1",
+  "extensions/vscode/tests/backend.test.cjs": "784516887cd2328b7f1e6c112fa699cb57579c7dd75594390d74b79c284dd217",
+  "extensions/vscode/bin/linux-x64/easy-switch-helper": "4db9958780010fec0f503079e673facaa1e4d9c76a117d22b45de019bc10b497",
+  "extensions/vscode/bin/linux-arm64/easy-switch-helper": "ad54070ccdcba62bb32a167d36ca0160e2d13ed8d47b9811eacb133552237a4d"
+}

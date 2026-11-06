@@ -221,6 +221,9 @@ async fn proxy(
         let profiles=r.store.providers()?;let settings=r.store.settings()?;let profile=profiles.iter().find(|p|Some(&p.id)==settings.active_provider_id.as_ref()).context("没有活动代理供应商")?;ensure!(profile.runtime(),"当前模式不需要代理");
         let session=["session_id","x-codex-thread-id","conversation_id"].iter().find_map(|k|headers.get(*k).and_then(|v|v.to_str().ok())).filter(|s|s.len()<=256);
         let stateful=input.get("previous_response_id").is_some_and(|v|!v.is_null())||input.to_string().contains("\"encrypted_content\"");
+        if input["service_tier"] == "priority" {
+            ensure!(native_fast::supports_model(profile, &profiles, input["model"].as_str().unwrap_or(&profile.model), &crate::catalog::load(&r.store)?), "当前模型未选中或路由成员不支持 Responses，未发送优先请求");
+        }
         let candidates=r.selector.lock().unwrap().select(profile,&profiles,session,stateful)?;
         for (index,member) in candidates.iter().enumerate(){ensure!(member.protocol!=Protocol::ChatCompletions||endpoint!="responses/compact","Chat Completions 不支持原生 compact");let mut payload=if member.protocol==Protocol::ChatCompletions{protocol::to_chat(&input,&member.model)?}else{input.clone()};payload["model"]=json!(member.model);let endpoint=if member.protocol==Protocol::ChatCompletions{"chat/completions"}else{endpoint.as_str()};let mut req=request(&r.client,member,endpoint)?.json(&payload);for key in ["session_id","x-codex-thread-id","conversation_id"]{if let Some(v)=headers.get(key){req=req.header(key,v);}}
             let start=Instant::now();let response=req.send().await;let status=response.as_ref().map(|r|r.status().as_u16()).unwrap_or(0);route_log(&r.store,&member.id,status,start.elapsed().as_millis());

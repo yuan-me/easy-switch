@@ -151,7 +151,7 @@ pub fn stage_for_provider(
 ) -> Result<()> {
     let mut catalogs = load(store)?;
     let old_state = serde_json::to_vec(&catalogs)?;
-    if let Some((path, bytes)) = prepare_catalog(p, settings, config, &mut catalogs)? {
+    if let Some((path, bytes)) = prepare_catalog(p, settings, config, &mut catalogs, &store.providers()?)? {
         j.stage(&path, Some(&bytes))?;
     }
     if serde_json::to_vec(&catalogs)? != old_state {
@@ -166,6 +166,7 @@ fn prepare_catalog(
     settings: &Settings,
     config: &mut String,
     catalogs: &mut Catalogs,
+    providers: &[Provider],
 ) -> Result<Option<(PathBuf, Vec<u8>)>> {
     let mut doc = config
         .parse::<DocumentMut>()
@@ -196,10 +197,12 @@ fn prepare_catalog(
     } else {
         false
     };
+    let manual = ModelList { available: vec![p.model.clone()], checked_at: Some(0), ..Default::default() };
     let state = catalogs
         .providers
         .get(&p.id)
-        .filter(|s| p.mode != AuthMode::Official && s.checked_at.is_some());
+        .filter(|s| p.mode != AuthMode::Official && s.checked_at.is_some())
+        .or_else(|| (p.mode != AuthMode::Official && (p.native_fast_enabled() || p.mode == AuthMode::Aggregate)).then_some(&manual));
     let mut payload = None;
     if let Some(state) = state {
         if !uses_managed {
@@ -232,9 +235,14 @@ fn prepare_catalog(
         }
         validate_ids(&ids)?;
         ensure!(!ids.is_empty(), "至少保留一个模型");
+        let mut document = model_document(&ids, &templates);
+        for model in document["models"].as_array_mut().unwrap() {
+            let supported = crate::native_fast::supports_model(p, providers, model["slug"].as_str().unwrap_or_default(), catalogs);
+            crate::native_fast::model_tiers(model, supported);
+        }
         payload = Some((
             path,
-            serde_json::to_vec_pretty(&model_document(&ids, &templates))?,
+            serde_json::to_vec_pretty(&document)?,
         ));
         doc["model_catalog_json"] = value(managed);
     } else if uses_managed {
@@ -293,7 +301,7 @@ pub fn save(
                 == p.provider_id(),
             "当前供应商已在 Codex 中改变，请先同步配置"
         );
-        payload = prepare_catalog(&p, &settings, &mut next, &mut catalogs)?;
+        payload = prepare_catalog(&p, &settings, &mut next, &mut catalogs, &store.providers()?)?;
         ensure!(
             if cfg.exists() {
                 fs::read_to_string(&cfg)?

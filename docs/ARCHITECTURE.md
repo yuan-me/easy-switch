@@ -1,10 +1,10 @@
 # 架构与数据边界
 
-`crates/core` 承担供应商、配置、DPAPI、操作日志、会话与数据库变更、桌面适配、协议和 Runtime。`src-tauri` 是命令、进度事件和更新生命周期；`src` 仅展示与交互，通过 Tauri IPC 调用业务层，不直接读取凭证、SQLite 或启动进程。
+`crates/core` 负责供应商、配置、DPAPI、操作日志、会话与数据库变更、桌面适配、协议和 Runtime。`src-tauri` 是命令、进度事件和更新生命周期；`src` 仅展示与交互，通过 Tauri IPC 调用业务层，不直接读取凭证、SQLite 或启动进程。
 
 ## 事务
 
-写入由应用内 busy guard 与跨进程文件锁串行化。配置在退出 Codex 前预检查，确认桌面进程及其子进程全部退出后再扫描文件。SQLite 在退出后 checkpoint、使用 backup API 创建副本、修改副本并执行 integrity_check。JSONL 只改 session_meta 中的目标字段，其余行按原字节保留。
+写入由应用内 busy guard 与跨进程文件锁串行化。配置在退出 Codex 前预检查，确认桌面进程及其子进程全部退出后再扫描文件。SQLite 在退出后 checkpoint、使用 backup API 创建副本、修改副本并执行 integrity_check。Windows 桌面切换只改 JSONL 的 session_meta 目标字段，其余行按原字节保留。Remote-SSH 切换还会从已有完整设置快照追加目标模型与供应商事件，不生成新的权限设置。
 
 Journal 为每个目标保留加密 preimage、加密暂存、前后 SHA-256 摘要。状态为 Preparing → Applying → Complete；失败恢复为 Restored。启动后未完成的日志会阻止下一次业务写入。显式恢复先记录 Restoring，再验证所有备份和文件，恢复期间再校验每次写入。源文件已外部修改或数据库仍有 WAL/journal 时拒绝覆盖。
 
@@ -24,7 +24,7 @@ API Key 和自定义请求头值在供应商文件中通过 DPAPI 加密。列�
 
 使用官方 Tauri updater 校验更新包与签名内版本。检查/下载与安装分别受更新锁和业务 busy guard 保护。下载完成先请求用户确认，确认后正常关闭 Codex，再检查写入者与 Runtime 活动数并调用 Runtime 原子排空接口。签名失败不进入 ready，下载失败可重试，关闭或安装启动失败保留下载内容。安装包默认按当前用户安装，检查 WebView2；用户数据目录独立于程序目录。
 
-## 仪表盘与设置（1.3.0）
+## 仪表盘与设置
 
 仪表盘复用 `scan_sessions` 和 `usage_report`，以本机自然日生成今日小时分组及最近七天分组，后台或忙碌时跳过定时刷新。扫描通过路径安全校验后忽略已无对应文件的数据库记录，不删除旧索引；扫描后的文件消失仍会拦截修改。
 
@@ -32,7 +32,7 @@ API Key 和自定义请求头值在供应商文件中通过 DPAPI 加密。列�
 
 正式与测试通道使用不同 identifier、安装入口、数据目录和清单 URL。测试通道只接收 test-channel prerelease，正式通道只读取 latest release。真实安装回滚仍需 VM 验收。
 
-## Token 用量（1.1.0）
+## Token 用量
 
 新增只读 IPC `usage_report({query:{bucketStarts:number[],end:number,model:string|null}})`。
 时间参数为 Unix 秒，分组左闭右开；前端用本机时区产生小时／日边界，周一作为周起点。最多 32 个分组，最大范围 32 天。

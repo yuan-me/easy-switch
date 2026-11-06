@@ -1,0 +1,15 @@
+{
+  "environment": "QEMU arm64 Linux RAM-only; no NIC, disk or host share",
+  "tests": {
+    "helper_tests": 0
+  },
+  "qemuExitCode": 0,
+  "timedOut": false,
+  "passed": true,
+  "testSha256": {
+    "helper_tests": "c642f027eca121634375a69b3dc1b0b8ec3582c40e672acbd565856c624dc885"
+  },
+  "kernelSha256": "849394914e6a93cc9bb17e901f445ce21fcd7e4528541d9496a74d6a6ccee319",
+  "remoteSshTested": false,
+  "realAccountsUsed": false
+}

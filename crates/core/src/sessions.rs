@@ -60,23 +60,31 @@ fn s(v: &Value, key: &str) -> String {
     v[key].as_str().unwrap_or("").to_owned()
 }
 pub fn normalize(path: &Path) -> Result<PathBuf> {
-    let raw = path.to_string_lossy();
-    #[cfg(windows)]
-    let raw = std::borrow::Cow::Owned::<str>(raw.replace('/', "\\"));
-    let raw = if raw.starts_with(r"\\?\UNC\") {
-        format!(r"\\{}", &raw[8..])
-    } else if raw.starts_with(r"\\?\") {
-        raw[4..].into()
-    } else {
-        raw.into_owned()
-    };
     ensure!(
-        !raw.starts_with(r"\\.\") && !raw.starts_with(r"\??\") && !raw.contains('\0'),
-        "拒绝设备命名空间路径"
+        !path.as_os_str().as_encoded_bytes().contains(&0),
+        "路径包含空字符"
     );
-    let p = PathBuf::from(raw);
+    #[cfg(windows)]
+    let p = {
+        let raw = path.to_string_lossy().replace('/', "\\");
+        let raw = if raw.starts_with(r"\\?\UNC\") {
+            format!(r"\\{}", &raw[8..])
+        } else if raw.starts_with(r"\\?\") {
+            raw[4..].into()
+        } else {
+            raw
+        };
+        ensure!(
+            !raw.starts_with(r"\\.\") && !raw.starts_with(r"\??\") && !raw.contains('\0'),
+            "拒绝设备命名空间路径"
+        );
+        PathBuf::from(raw)
+    };
+    #[cfg(not(windows))]
+    let p = path.to_path_buf();
     ensure!(p.is_absolute(), "路径不是绝对路径");
     for part in p.components() {
+        #[cfg(windows)]
         if let std::path::Component::Normal(n) = part {
             let n = n.to_string_lossy();
             ensure!(
@@ -94,13 +102,17 @@ pub fn normalize(path: &Path) -> Result<PathBuf> {
     }
     Ok(p.components().collect())
 }
+pub fn path_key(path: &Path) -> Result<PathBuf> {
+    let path = normalize(path)?;
+    #[cfg(windows)]
+    let path = PathBuf::from(path.to_string_lossy().to_lowercase());
+    Ok(path)
+}
+pub fn same_path(a: &Path, b: &Path) -> Result<bool> {
+    Ok(path_key(a)? == path_key(b)?)
+}
 pub fn within(path: &Path, root: &Path) -> Result<bool> {
-    let p = normalize(path)?.to_string_lossy().to_lowercase();
-    let r = normalize(root)?
-        .to_string_lossy()
-        .trim_end_matches(['\\', '/'])
-        .to_lowercase();
-    Ok(p == r || p.starts_with(&(r + std::path::MAIN_SEPARATOR_STR)))
+    Ok(path_key(path)?.starts_with(path_key(root)?))
 }
 pub fn no_links(path: &Path) -> Result<()> {
     for part in path.ancestors() {
@@ -150,13 +162,13 @@ pub fn databases(settings: &Settings) -> Result<Vec<PathBuf>> {
             {
                 no_links(&p)?;
                 let p = normalize(&p)?;
-                if seen.insert(p.to_string_lossy().to_lowercase()) {
+                if seen.insert(path_key(&p)?) {
                     all.push(p);
                 }
             }
         }
     }
-    all.sort_by_key(|p| p.to_string_lossy().to_lowercase());
+    all.sort();
     Ok(all)
 }
 pub fn open(path: &Path) -> Result<Connection> {
@@ -263,10 +275,7 @@ impl Scanner {
                             let existing = &mut out.sessions[position];
                             let same_database = existing.database == item.database
                                 || existing.related_databases.contains(&path);
-                            let same_file = existing
-                                .path
-                                .to_string_lossy()
-                                .eq_ignore_ascii_case(&item.path.to_string_lossy());
+                            let same_file = same_path(&existing.path, &item.path)?;
                             if same_database || !same_file || existing.archived != item.archived {
                                 out.warnings.push(format!(
                                     "线程索引冲突：{}（{}、{}；{}）",
@@ -296,7 +305,7 @@ impl Scanner {
                             existing.related_databases.extend(item.related_databases);
                         } else {
                             ids.insert(item.id.clone(), out.sessions.len());
-                            indexed.insert(item.path.to_string_lossy().to_lowercase());
+                            indexed.insert(path_key(&item.path)?);
                             out.sessions.push(item);
                         }
                     }
@@ -336,7 +345,7 @@ impl Scanner {
                     None,
                 ));
                 alive.insert(path.clone());
-                if indexed.contains(&path.to_string_lossy().to_lowercase()) {
+                if indexed.contains(&path_key(&path)?) {
                     continue;
                 }
                 let result = (|| -> Result<Session> {
@@ -552,7 +561,7 @@ pub fn patch_metadata(source: &Path, dest: &Path, key: &str, value: &str) -> Res
         "不支持的元数据字段"
     );
     let mut input = BufReader::new(File::open(source)?);
-    let mut output = BufWriter::with_capacity(64 * 1024, File::create(dest)?);
+    let mut output = BufWriter::with_capacity(64 * 1024, crate::store::private_file(dest, false)?);
     let mut line = vec![];
     let mut metadata = None;
     let mut ordinal = 0;
@@ -634,6 +643,7 @@ pub fn stage_database(
     let before = journal::hash(path)?;
     let tmp = j.dir.join(format!("{}.db", uuid::Uuid::new_v4()));
     let result = (|| {
+        drop(crate::store::private_file(&tmp, true)?);
         let mut copy = Connection::open(&tmp)?;
         {
             let b = rusqlite::backup::Backup::new(&source, &mut copy)?;
@@ -685,6 +695,45 @@ pub fn stage_changes_with_progress(
     ct: &CancellationToken,
     progress: &impl Fn(crate::Progress),
 ) -> Result<()> {
+    stage_changes_inner(j, settings, items, action, value, None, ct, progress)
+}
+pub fn stage_provider_with_model(
+    j: &mut Journal,
+    settings: &Settings,
+    items: &[Session],
+    provider: &str,
+    model: Option<&str>,
+    ct: &CancellationToken,
+    progress: &impl Fn(crate::Progress),
+) -> Result<()> {
+    ensure!(
+        model.is_none_or(|m| !m.trim().is_empty()),
+        "目标模型不能为空"
+    );
+    stage_changes_inner(
+        j,
+        settings,
+        items,
+        "provider",
+        Some(provider),
+        Some(model),
+        ct,
+        progress,
+    )
+}
+pub fn validate_provider_model_history(items: &[Session], model: Option<&str>) -> Result<()> {
+    crate::history::prepare_model_events(items, None, model, &CancellationToken::new()).map(|_| ())
+}
+fn stage_changes_inner(
+    j: &mut Journal,
+    settings: &Settings,
+    items: &[Session],
+    action: &str,
+    value: Option<&str>,
+    model: Option<Option<&str>>,
+    ct: &CancellationToken,
+    progress: &impl Fn(crate::Progress),
+) -> Result<()> {
     progress(crate::Progress::new("修复会话", "检查会话关联", 0, None));
     ensure!(
         matches!(
@@ -693,6 +742,16 @@ pub fn stage_changes_with_progress(
         ),
         "不支持的会话操作"
     );
+    let projection_events = if let Some(model) = model {
+        crate::history::prepare_model_events(
+            items,
+            Some(value.context("缺少目标服务商")?),
+            model,
+            ct,
+        )?
+    } else {
+        HashMap::new()
+    };
     let mut destinations = HashMap::new();
     let mut expanded = vec![];
     for item in items {
@@ -714,7 +773,7 @@ pub fn stage_changes_with_progress(
         )?;
     }
     let offsets = if matches!(action, "provider" | "migrate") {
-        crate::history::stage_metadata(
+        crate::history::stage_metadata_with_events(
             j,
             settings,
             &expanded,
@@ -724,6 +783,7 @@ pub fn stage_changes_with_progress(
                 "cwd"
             },
             value.context("缺少修改值")?,
+            &projection_events,
             ct,
             progress,
         )?
@@ -741,10 +801,7 @@ pub fn stage_changes_with_progress(
         let path = owned(&item.path, settings)?;
         ensure!(path.is_file(), "会话文件不存在");
         let header = crate::history::header(&path)?;
-        ensure!(
-            header.id == item.id,
-            "线程索引与会话身份不一致，未修改"
-        );
+        ensure!(header.id == item.id, "线程索引与会话身份不一致，未修改");
         match action {
             "provider" | "migrate" => {
                 if header.paginated {
@@ -762,6 +819,9 @@ pub fn stage_changes_with_progress(
                         },
                         value.context("缺少修改值")?,
                     )?;
+                    if let Some(event) = projection_events.get(&path_key(&path)?) {
+                        crate::history::append_projection_event(&temp, event)?;
+                    }
                     j.stage_file(&path, &temp)
                 })();
                 let _ = fs::remove_file(temp);
@@ -859,22 +919,37 @@ pub fn stage_changes_with_progress(
                     |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
                 )?;
                 ensure!(
-                    owned(Path::new(&rollout), settings)?
-                        .to_string_lossy()
-                        .eq_ignore_ascii_case(&item.path.to_string_lossy())
+                    same_path(&owned(Path::new(&rollout), settings)?, &item.path)?
                         && (archived != 0) == item.archived,
                     "扫描后线程索引发生变化，未修改"
                 );
-                if action == "provider" && provider.as_deref() == value {
-                    let count: i64 = db.query_row("SELECT COUNT(*) FROM threads WHERE id=?1", [&item.id], |r| r.get(0))?;
+                if action == "provider" && provider.as_deref() == value && model.is_none() {
+                    let count: i64 = db.query_row(
+                        "SELECT COUNT(*) FROM threads WHERE id=?1",
+                        [&item.id],
+                        |r| r.get(0),
+                    )?;
                     ensure!(count == 1, "线程索引不唯一或已消失");
                     continue;
                 }
                 let affected = match action {
-                    "provider" => db.execute(
-                        "UPDATE threads SET model_provider=?1 WHERE id=?2",
-                        params![value, &item.id],
-                    )?,
+                    "provider" => {
+                        if let Some(model) = model.filter(|_| thread_cols.contains("model")) {
+                            if model.is_none() {
+                                let not_null: bool = db.query_row("SELECT \"notnull\" FROM pragma_table_info('threads') WHERE name='model'", [], |r| r.get(0))?;
+                                ensure!(!not_null, "当前数据库不支持恢复默认模型，未修改");
+                            }
+                            db.execute(
+                                "UPDATE threads SET model_provider=?1,model=?2 WHERE id=?3",
+                                params![value, model, &item.id],
+                            )?
+                        } else {
+                            db.execute(
+                                "UPDATE threads SET model_provider=?1 WHERE id=?2",
+                                params![value, &item.id],
+                            )?
+                        }
+                    }
                     "migrate" => {
                         let project = project_for(db, value.context("目标路径缺失")?)?;
                         local_projects.insert(item.id.clone(), project.clone());
@@ -951,7 +1026,9 @@ pub fn stage_changes_with_progress(
                         _ => {}
                     }
                 }
-                if columns(db, "local_thread_catalog_metadata")?.contains("catalog_revision") && catalog_changed {
+                if columns(db, "local_thread_catalog_metadata")?.contains("catalog_revision")
+                    && catalog_changed
+                {
                     db.execute("UPDATE local_thread_catalog_metadata SET catalog_revision=catalog_revision+1",[])?;
                 }
                 let sync = columns(db, "local_thread_catalog_sync_state")?;

@@ -1,0 +1,26 @@
+EASY_SWITCH_TESTS_BEGIN
+
+running 17 tests
+test guard::tests::blocks_idle_codex_and_unrelated_process_writing_the_target ... ok
+test guard::tests::privileged_reply_must_match_protocol_pid_and_start_time ... ok
+test guard::tests::protected_transport_requires_root_monitor_and_matching_identity ... ok
+test guard::tests::recognizes_only_codex_and_uses_exact_home ... ok
+test tests::another_store_cannot_inspect_switch_or_recover_an_owned_home ... ok
+test tests::appserver::real_appserver_search_keeps_appended_model_projection ... ignored, requires EASY_SWITCH_TEST_CODEX; isolated real app-server schema and search reconciliation
+test tests::concurrent_first_claim_has_one_owner_and_never_overwrites_it ... ok
+test tests::incomplete_active_index_is_rejected_before_switching ... ok
+test tests::interrupted_operation_remains_visible_even_if_live_config_is_invalid ... ok
+test tests::missing_key_and_invalid_url_do_not_touch_configuration ... ok
+test tests::model_history_without_owned_settings_is_rejected_in_preflight ... ok
+test tests::official_api_a_api_b_official_keeps_login_and_history ... ok
+test tests::official_without_config_model_uses_confirmed_model_and_restores_default_config ... ok
+test tests::rejects_collision_and_project_overrides_without_stopping_backend ... ok
+test tests::sqlite_directory_symlink_is_rejected_before_migration ... ok
+test tests::stale_configuration_and_busy_guard_leave_files_unchanged ... ok
+test tests::user_config_selects_real_database_directory_over_environment ... ok
+
+test result: ok. 16 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.81s
+
+TEST_RESULT helper_tests 0
+EASY_SWITCH_TESTS_DONE 0
+[    2.149479] reboot: Power down

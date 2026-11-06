@@ -66,6 +66,9 @@ pub struct Provider {
     #[serde(alias = "Members")]
     pub members: Vec<Member>,
     pub image_compatibility: bool,
+    #[serde(default)]
+    pub native_fast_unlock: Option<bool>,
+    pub fast_models: Vec<String>,
     pub headers: BTreeMap<String, String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub protected_headers: Option<String>,
@@ -85,12 +88,19 @@ impl Default for Provider {
             strategy: Strategy::Failover,
             members: vec![],
             image_compatibility: false,
+            native_fast_unlock: Some(false),
+            fast_models: vec![],
             headers: BTreeMap::new(),
             protected_headers: None,
         }
     }
 }
 impl Provider {
+    pub fn native_fast_enabled(&self) -> bool {
+        self.native_fast_unlock == Some(true)
+            && matches!(self.mode, AuthMode::Api | AuthMode::Aggregate)
+            && self.protocol == Protocol::Responses
+    }
     pub fn official() -> Self {
         Self {
             id: "official".into(),
@@ -110,6 +120,7 @@ impl Provider {
         self.mode == AuthMode::Aggregate || self.protocol == Protocol::ChatCompletions
     }
     pub fn validate(&self, all: &[Provider]) -> Result<()> {
+        crate::catalog::validate_ids(&self.fast_models)?;
         ensure!(!self.name.trim().is_empty(), "请填写供应商名称");
         ensure!(
             self.id.len() <= 64
@@ -207,6 +218,8 @@ pub struct Settings {
     pub color_style: String,
     pub automatic_updates: bool,
     pub automatic_download: bool,
+    // Read legacy global values only when an old provider has no individual choice.
+    pub native_fast_unlock: bool,
 }
 impl Default for Settings {
     fn default() -> Self {
@@ -230,6 +243,7 @@ impl Default for Settings {
             color_style: "vivid".into(),
             automatic_updates: true,
             automatic_download: true,
+            native_fast_unlock: false,
         }
     }
 }

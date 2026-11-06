@@ -157,6 +157,7 @@ async fn runtime_forwards_native_tools_and_protects_inflight_requests() {
         id: "aggregate".into(),
         name: "aggregate".into(),
         mode: AuthMode::Aggregate,
+        model: "route".into(),
         members: vec![Member {
             provider_id: member.id.clone(),
             weight: 1,
@@ -264,6 +265,14 @@ async fn runtime_forwards_native_tools_and_protects_inflight_requests() {
         .await
         .unwrap();
     assert_eq!(compact.status(), 200);
+    let mut priority = json!({"input":"fast","model":"hidden","service_tier":"priority"});
+    let denied = client.post(format!("{url}/v1/responses")).bearer_auth(key).json(&priority).send().await.unwrap();
+    assert!(!denied.status().is_success());
+    assert_eq!(upstream.calls.lock().unwrap().len(), 3);
+    priority["model"] = json!("route");
+    let accepted = client.post(format!("{url}/v1/responses")).bearer_auth(key).json(&priority).send().await.unwrap();
+    assert!(accepted.status().is_success());
+    assert_eq!(upstream.calls.lock().unwrap().last().unwrap()["service_tier"], "priority");
     let fail = client
         .post(format!("{url}/v1/responses"))
         .bearer_auth(key)
@@ -272,7 +281,7 @@ async fn runtime_forwards_native_tools_and_protects_inflight_requests() {
         .await
         .unwrap();
     assert_eq!(fail.status(), 503);
-    assert_eq!(upstream.calls.lock().unwrap().len(), 4);
+    assert_eq!(upstream.calls.lock().unwrap().len(), 5);
     let log = std::fs::read_to_string(store.root.join("routing.jsonl")).unwrap();
     assert!(!log.contains("synthetic-upstream-key") && !log.contains("synthetic-image"));
     assert_eq!(

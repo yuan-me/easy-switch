@@ -16,6 +16,6 @@ export function Modal({title,children,onClose,wide=false}:{title:string;children
  return <dialog ref={ref} className={wide?'modal provider-editor':'modal'} onCancel={e=>{e.preventDefault();onClose()}} aria-label={title} onClick={e=>{if(e.target===e.currentTarget)onClose()}}><div className="modal-head"><h2>{title}</h2><IconButton label="关闭" onClick={onClose}><X size={19}/></IconButton></div>{children}</dialog>
 }
 export function Empty({title,children}:{title:string;children?:ReactNode}){return <div className="empty"><span className="empty-icon"><PanelLeft size={28}/></span><h3>{title}</h3>{children}</div>}
-export type Confirm={title:string;text:string;action:string;run:()=>Promise<void>;danger?:boolean};
+export type Confirm={title:string;text:string;action:string;run:()=>Promise<void>;danger?:boolean;settingsRestart?:boolean};
 export type Run=(fn:()=>Promise<void>)=>Promise<void>;
 export type Notify=(text:string,error?:boolean)=>void;
