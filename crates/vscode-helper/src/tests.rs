@@ -12,7 +12,9 @@ impl Fixture {
     fn new() -> Self {
         #[cfg(not(windows))]
         easy_switch_core::crypto::set_session_key([73; 32]).unwrap();
-        let root = tempfile::tempdir().unwrap();
+        // Windows CI may expose TEMP through an 8.3 alias; requests use canonical directories.
+        let temp = sessions::normalize(&std::env::temp_dir().canonicalize().unwrap()).unwrap();
+        let root = tempfile::tempdir_in(temp).unwrap();
         let home = root.path().join("codex");
         let project = root.path().join("project");
         fs::create_dir_all(home.join("sessions")).unwrap();
