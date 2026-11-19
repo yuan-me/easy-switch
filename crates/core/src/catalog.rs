@@ -124,7 +124,8 @@ fn read_models(path: &std::path::Path) -> Result<Vec<Value>> {
 
 pub fn model_document(ids: &[String], templates: &[Value]) -> Value {
     let models: Vec<_> = ids.iter().enumerate().map(|(priority, id)| {
-        let mut model = templates.iter().find(|m| m["slug"].as_str() == Some(id)).cloned().unwrap_or_else(|| json!({
+        let template = templates.iter().find(|m| m["slug"].as_str() == Some(id));
+        let mut model = template.cloned().unwrap_or_else(|| json!({
             "slug": id, "display_name": id, "description": "供应商模型",
             "base_instructions": "You are a coding assistant. Use the available tools to help the user.",
             "supported_reasoning_levels": [], "shell_type": "unified_exec",
@@ -133,6 +134,12 @@ pub fn model_document(ids: &[String], templates: &[Value]) -> Value {
             "truncation_policy": {"mode": "tokens", "limit": 10000},
             "experimental_supported_tools": [], "input_modalities": ["text"]
         }));
+        // Codex exposes a missing default as "none", which Astra rejects.
+        if template.is_none() && id == "gpt-6.2-astra" {
+            model["default_reasoning_level"] = json!("low");
+            model["supported_reasoning_levels"] = ["low", "medium", "high", "xhigh", "max"]
+                .iter().map(|level| json!({"effort": level, "description": level})).collect();
+        }
         model["visibility"] = json!("list");
         model["supported_in_api"] = json!(true);
         model["priority"] = json!(priority);

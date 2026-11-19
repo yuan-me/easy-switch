@@ -4,15 +4,19 @@
 
 在 Windows 上切换 Codex 供应商，管理本地会话和 Token 用量。
 
-[下载 v1.4.1](https://github.com/yuan-me/easy-switch/releases/download/v1.4.1/Easy.Switch_1.4.1_x64-setup.exe) · [更新记录](CHANGELOG.md) · [使用 Fast](docs/NATIVE_FAST.md)
+[下载 v1.4.2](https://github.com/yuan-me/easy-switch/releases/download/v1.4.2/Easy.Switch_1.4.2_x64-setup.exe) · [更新记录](CHANGELOG.md) · [使用 Fast](docs/NATIVE_FAST.md)
 
 ## 安装
 
-1. 下载并运行 `Easy.Switch_1.4.1_x64-setup.exe`。安装到当前 Windows 用户，缺少 WebView2 时会联网下载。
+1. 下载并运行 `Easy.Switch_1.4.2_x64-setup.exe`。安装到当前 Windows 用户，缺少 WebView2 时会联网下载。
 2. 打开“设置”，确认 Codex 数据目录和桌面程序路径。
 3. 添加供应商，填写 API 地址、密钥和模型，然后点击“切换”。切换会正常退出并重新启动 Codex，请先完成正在生成的任务。
 
 支持 Windows x64，日常使用不需要 Rust 或 Node.js。`test-channel` 用于隔离测试，请使用正式发行版。
+
+## 1.4.2 更新
+
+修复导入 `gpt-6.2-astra` 后首次发消息提示不支持 `none` 的问题。升级后刷新当前供应商的模型列表，再在 Codex 新对话中选择 Astra。缺少本地模型模板时，默认推理强度为 `low`，也可以选择 `medium`、`high`、`xhigh` 或 `max`。
 
 ## 1.4.1 更新
 

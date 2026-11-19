@@ -57,6 +57,24 @@ fn known_metadata_is_preserved_and_unknown_models_do_not_inherit_capabilities() 
     assert!(result["models"][1].get("tool_mode").is_none());
 }
 
+#[test]
+fn astra_without_a_template_has_a_supported_default() {
+    let ids = names(&["gpt-6.2-astra", "another-model"]);
+    let generated = catalog::model_document(&ids, &[]);
+    let astra = &generated["models"][0];
+    assert_eq!(astra["default_reasoning_level"], "low");
+    let levels: Vec<_> = astra["supported_reasoning_levels"].as_array().unwrap()
+        .iter().map(|preset| preset["effort"].as_str().unwrap()).collect();
+    assert_eq!(levels, ["low", "medium", "high", "xhigh", "max"]);
+    assert!(generated["models"][1].get("default_reasoning_level").is_none());
+
+    let template = json!({"slug": "gpt-6.2-astra", "default_reasoning_level": "high",
+        "supported_reasoning_levels": [{"effort": "high", "description": "Provider preset"}]});
+    let imported = catalog::model_document(&ids, std::slice::from_ref(&template));
+    assert_eq!(imported["models"][0]["default_reasoning_level"], "high");
+    assert_eq!(imported["models"][0]["supported_reasoning_levels"], template["supported_reasoning_levels"]);
+}
+
 fn fixture() -> (tempfile::TempDir, Store, Settings, Provider) {
     let temp = tempfile::tempdir().unwrap();
     let store = Store::open(temp.path().join("store")).unwrap();
@@ -259,7 +277,7 @@ fn generated_catalog_is_accepted_by_codex_model_list() {
     let executable = std::env::var_os("CODEX_TEST_EXECUTABLE").expect("set CODEX_TEST_EXECUTABLE");
     let temp = tempfile::tempdir().unwrap();
     let path = temp.path().join("models.json");
-    let mut document = catalog::model_document(&names(&["synthetic-model-one", "synthetic-model-two"]), &[]);
+    let mut document = catalog::model_document(&names(&["synthetic-model-one", "gpt-6.2-astra"]), &[]);
     native_fast::model_tiers(&mut document["models"][0], true);
     fs::write(
         &path,
@@ -322,9 +340,10 @@ fn generated_catalog_is_accepted_by_codex_model_list() {
                     .ok_or_else(|| anyhow::anyhow!("missing model data: {line}"))?;
                 let ids: Vec<_> = list.iter().filter_map(|v| v["model"].as_str()).collect();
                 anyhow::ensure!(
-                    ids == ["synthetic-model-one", "synthetic-model-two"],
+                    ids == ["synthetic-model-one", "gpt-6.2-astra"],
                     "unexpected models: {ids:?}"
                 );
+                anyhow::ensure!(list[1]["defaultReasoningEffort"] == "low", "Codex did not expose Astra's low default");
                 anyhow::ensure!(list[0]["serviceTiers"].as_array().is_some_and(|tiers| tiers.iter().any(|tier| tier["id"] == "priority")), "Codex did not expose priority metadata: {}", list[0]);
                 break;
             }
